@@ -1,36 +1,147 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 出版校对流程管理平台
 
-## Getting Started
+## 项目简介
 
-First, run the development server:
+出版校对流程管理平台是一套面向出版社内部业务流程设计的轻量化管理工具。
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+项目针对图书出版过程中校对流程节点多、人工查询频繁、进度记录分散等问题，通过建立线上化流程管理方式，实现：
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- 出版项目统一管理；
+- 校对流程节点可视化；
+- 项目当前状态实时查看；
+- 滞留项目自动提醒；
+- 减少编辑与校对人员之间的重复沟通。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+本项目第一阶段定位为：
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+> 小型内部业务管理工具（MVP版本）
 
-## Learn More
+后续根据实际使用情况逐步扩展。
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# 项目背景
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+目前单位每年约有200本图书进入出版流程。
 
-## Deploy on Vercel
+图书校对通常涉及：
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- 初审
+- 一校
+- 二校
+- 三校
+- 加校
+- 核红
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+在实际工作中，由于项目数量较多，编辑人员需要通过人工询问方式了解：
+
+- 当前书稿处于哪个阶段；
+- 是否已经开始处理；
+- 预计何时完成；
+- 是否存在滞留情况。
+
+校对管理人员也难以及时发现长期未处理项目。
+
+因此建设本平台，提高流程透明度和管理效率。
+
+---
+
+# 第一阶段目标（MVP）
+
+第一阶段主要实现核心业务闭环。
+
+包括：
+
+## 项目管理
+
+支持：
+
+- 创建出版项目；
+- 查看项目列表；
+- 编辑项目信息；
+- 查看当前状态。
+
+项目基础信息包括：
+
+- 书名；
+- 责任编辑；
+- 校对负责人；
+- 当前阶段；
+- 当前状态。
+
+---
+
+## 流程管理
+
+支持出版流程节点管理。
+
+流程包括：
+
+- 初审；
+- 一校；
+- 二校；
+- 三校；
+- 加校；
+- 核红。
+
+说明：
+
+不同图书根据实际情况进入不同流程，并非所有图书必须经历全部节点。
+
+系统重点记录：
+
+- 当前所在流程阶段；
+- 流程开始时间；
+- 当前处理状态。
+
+---
+
+## 超时预警
+
+系统根据书稿重要程度设置不同阈值：
+
+普通稿件：
+
+- 阈值：30天
+
+急稿：
+
+- 阈值：15天
+
+重要急稿：
+
+- 阈值：7天
+
+初审：
+
+- 阈值：90天
+
+当项目超过对应阈值后：
+
+- 在页面突出显示；
+- 向校对管理人员发出提醒。
+
+---
+
+# 页面展示设计
+
+首页采用流程看板形式。
+
+主要展示：
+
+## 待处理书稿
+
+按照时间顺序排列。
+
+不同流程阶段使用不同颜色区分：
+
+- 初审
+- 一校
+- 二校
+- 三校
+- 加校
+- 核红
+
+项目采用卡片式展示：
+
+例如：
