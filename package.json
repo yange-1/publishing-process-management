@@ -8,11 +8,17 @@
     "start": "next start",
     "lint": "eslint",
     "db:init": "node scripts/db-init.mjs",
-    "test:tasks": "node --test test/tasks.test.ts"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "admin:create": "node scripts/admin-create.mjs",
+    "auth:secret": "node scripts/auth-secret.mjs",
+    "test:tasks": "node --test test/tasks.test.ts",
+    "test:auth": "node --test test/auth.test.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "next": "16.3.1",
+    "next-auth": "^4.24.15",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

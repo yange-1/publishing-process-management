@@ -14,16 +14,22 @@ CREATE TABLE IF NOT EXISTS companies (
 
 -- 用户/账号
 CREATE TABLE IF NOT EXISTS users (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  username     TEXT    NOT NULL UNIQUE,
-  display_name TEXT    NOT NULL,
-  company_id   INTEGER REFERENCES companies(id),
-  role         TEXT    NOT NULL CHECK (role IN (
-                 'RESPONSIBLE_EDITOR', 'EXTERNAL_SUPERVISOR', 'PROOFREADER', 'INTERNAL_ADMIN'
-               )),
-  is_active    INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
-  created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  username             TEXT    NOT NULL UNIQUE,
+  display_name         TEXT    NOT NULL,
+  company_id           INTEGER REFERENCES companies(id),
+  role                 TEXT    NOT NULL CHECK (role IN (
+                         'RESPONSIBLE_EDITOR', 'EXTERNAL_SUPERVISOR', 'PROOFREADER', 'INTERNAL_ADMIN'
+                       )),
+  is_active            INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  password_hash        TEXT,
+  must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
+  failed_login_count   INTEGER NOT NULL DEFAULT 0,
+  locked_until         TEXT,
+  last_login_at        TEXT,
+  session_version      INTEGER NOT NULL DEFAULT 0,
+  created_at           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 -- 图书项目（一本书可能有多个校次任务；书名不要求全局唯一）

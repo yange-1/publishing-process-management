@@ -9,6 +9,8 @@ import {
   sortOverdue,
   sortProjects,
 } from "@/components/projects";
+import { requireCurrentUser } from "@/lib/session";
+import UserBar from "@/app/components/UserBar";
 
 type StatTone = "slate" | "amber" | "blue" | "red" | "emerald";
 
@@ -41,7 +43,8 @@ function StatCard({
 
 const NAV_ITEMS = ["总览", "书稿仓库", "生产线", "已完成"] as const;
 
-export default function Home() {
+export default async function Home() {
+  const user = await requireCurrentUser();
   const today = new Date();
 
   const warehouse = sortProjects(MOCK_PROJECTS.filter(isWarehouse));
@@ -64,12 +67,15 @@ export default function Home() {
         <h1 className="text-2xl font-bold text-gray-900">
           出版校对流程管理平台
         </h1>
-        <button
-          type="button"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          发布校对任务
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            发布校对任务
+          </button>
+          <UserBar name={user.display_name} role={user.role} />
+        </div>
       </header>
 
       <nav className="mb-4 flex flex-wrap gap-2">
