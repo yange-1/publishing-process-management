@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:init": "node scripts/db-init.mjs"
+    "db:init": "node scripts/db-init.mjs",
+    "test:tasks": "node --test test/tasks.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

@@ -1,0 +1,494 @@
+import type Database from "better-sqlite3";
+
+// ===== 业务错误 =====
+
+export type TaskErrorCode =
+  | "USER_NOT_FOUND"
+  | "USER_INACTIVE"
+  | "FORBIDDEN"
+  | "TASK_NOT_FOUND"
+  | "INVALID_STATUS"
+  | "TASK_ALREADY_STARTED"
+  | "PROOFREADER_BUSY"
+  | "NOT_TASK_PROOFREADER"
+  | "PROXY_REASON_REQUIRED"
+  | "INVALID_STAGE_OR_STAR";
+
+export class TaskServiceError extends Error {
+  readonly code: TaskErrorCode;
+  constructor(code: TaskErrorCode, message: string) {
+    super(message);
+    this.name = "TaskServiceError";
+    this.code = code;
+  }
+}
+
+// ===== 常量 =====
+
+export const STAGES = [
+  "INITIAL_REVIEW",
+  "FIRST_PROOF",
+  "SECOND_PROOF",
+  "THIRD_PROOF",
+  "ADDITIONAL_PROOF",
+  "RED_CHECK",
+] as const;
+
+const EVENT_PUBLISHED = "TASK_PUBLISHED";
+const EVENT_CONFIRMED = "RECEIPT_CONFIRMED";
+const EVENT_STARTED = "TASK_STARTED";
+const EVENT_COMPLETED = "TASK_COMPLETED";
+const EVENT_CANCELLED = "TASK_CANCELLED";
+
+// ===== 内部工具 =====
+
+interface UserRow {
+  id: number;
+  role: string;
+  company_id: number | null;
+  is_active: number;
+}
+
+interface TaskRow {
+  id: number;
+  status: string;
+  proofreader_id: number | null;
+}
+
+function now(): string {
+  return new Date().toISOString();
+}
+
+function getActiveUser(db: Database.Database, userId: number): UserRow {
+  const user = db
+    .prepare(
+      "SELECT id, role, company_id, is_active FROM users WHERE id = ?",
+    )
+    .get(userId) as UserRow | undefined;
+  if (!user) throw new TaskServiceError("USER_NOT_FOUND", "用户不存在");
+  if (user.is_active !== 1)
+    throw new TaskServiceError("USER_INACTIVE", "用户已停用");
+  return user;
+}
+
+function getTask(db: Database.Database, taskId: number): TaskRow {
+  const task = db
+    .prepare("SELECT id, status, proofreader_id FROM tasks WHERE id = ?")
+    .get(taskId) as TaskRow | undefined;
+  if (!task) throw new TaskServiceError("TASK_NOT_FOUND", "任务不存在");
+  return task;
+}
+
+function assertStage(stage: string): void {
+  if (!(STAGES as readonly string[]).includes(stage)) {
+    throw new TaskServiceError("INVALID_STAGE_OR_STAR", "无效校次");
+  }
+}
+
+function assertStar(star: number): void {
+  if (!Number.isInteger(star) || star < 1 || star > 3) {
+    throw new TaskServiceError("INVALID_STAGE_OR_STAR", "无效星级（应为 1-3）");
+  }
+}
+
+function insertEvent(
+  db: Database.Database,
+  taskId: number,
+  eventType: string,
+  operator: UserRow,
+  isProxy: boolean,
+  proxyRole: string | null,
+  statusFrom: string | null,
+  statusTo: string,
+): void {
+  db.prepare(
+    "INSERT INTO task_events(task_id, event_type, operator_id, operator_role, is_proxy, proxy_role, status_from, status_to, occurred_at) VALUES (?,?,?,?,?,?,?,?,?)",
+  ).run(
+    taskId,
+    eventType,
+    operator.id,
+    operator.role,
+    isProxy ? 1 : 0,
+    proxyRole,
+    statusFrom,
+    statusTo,
+    now(),
+  );
+}
+
+function insertAudit(
+  db: Database.Database,
+  operatorId: number,
+  operationType: string,
+  targetId: number,
+  reason: string,
+  beforeValue: string | null,
+  afterValue: string | null,
+  proxyRole: string | null,
+): void {
+  db.prepare(
+    "INSERT INTO audit_log(operator_id, operation_type, target_type, target_id, reason, before_value, after_value, proxy_role, occurred_at) VALUES (?,?,?,?,?,?,?,?,?)",
+  ).run(
+    operatorId,
+    operationType,
+    "task",
+    String(targetId),
+    reason,
+    beforeValue,
+    afterValue,
+    proxyRole,
+    now(),
+  );
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  const err = e as { code?: string };
+  return typeof err?.code === "string" && err.code.startsWith("SQLITE_CONSTRAINT");
+}
+
+// ===== 1. 发布校对任务 =====
+
+export interface PublishParams {
+  operatorId: number;
+  bookId?: number;
+  bookTitle?: string;
+  identifier?: string;
+  stage: string;
+  starLevel: number;
+  note?: string;
+  editorId?: number; // 代发时指定目标责任编辑
+  proxyReason?: string; // 代发原因
+}
+
+export function publishTask(db: Database.Database, params: PublishParams): number {
+  const operator = getActiveUser(db, params.operatorId);
+  if (operator.role !== "RESPONSIBLE_EDITOR" && operator.role !== "INTERNAL_ADMIN") {
+    throw new TaskServiceError("FORBIDDEN", "无权限：仅责任编辑或超级管理员可发布");
+  }
+  assertStage(params.stage);
+  assertStar(params.starLevel);
+
+  let editorId: number;
+  let isProxy = false;
+  if (operator.role === "RESPONSIBLE_EDITOR") {
+    editorId = operator.id;
+  } else {
+    if (!params.editorId)
+      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代发布需指定目标责任编辑");
+    if (!params.proxyReason)
+      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代操作需填写原因");
+    const editor = db
+      .prepare(
+        "SELECT id FROM users WHERE id = ? AND role = 'RESPONSIBLE_EDITOR' AND is_active = 1",
+      )
+      .get(params.editorId);
+    if (!editor)
+      throw new TaskServiceError("USER_NOT_FOUND", "目标责任编辑不存在或不可用");
+    editorId = params.editorId;
+    isProxy = true;
+  }
+
+  const publishedAt = now();
+
+  return db.transaction(() => {
+    let bookId = params.bookId;
+    if (!bookId) {
+      if (!params.bookTitle)
+        throw new TaskServiceError("INVALID_STAGE_OR_STAR", "需提供 bookId 或书名");
+      const bookResult = db
+        .prepare("INSERT INTO books(title, editor_id, identifier) VALUES (?,?,?)")
+        .run(params.bookTitle, editorId, params.identifier ?? null);
+      bookId = Number(bookResult.lastInsertRowid);
+    } else {
+      const book = db.prepare("SELECT id FROM books WHERE id = ?").get(bookId);
+      if (!book) throw new TaskServiceError("TASK_NOT_FOUND", "指定的 bookId 不存在");
+    }
+
+    const taskResult = db
+      .prepare(
+        "INSERT INTO tasks(book_id, stage, star_level, status, note, publisher_id, published_at) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run(
+        bookId,
+        params.stage,
+        params.starLevel,
+        "PENDING_CONFIRMATION",
+        params.note ?? null,
+        editorId,
+        publishedAt,
+      );
+    const taskId = Number(taskResult.lastInsertRowid);
+
+    insertEvent(db, taskId, EVENT_PUBLISHED, operator, isProxy, isProxy ? "RESPONSIBLE_EDITOR" : null, null, "PENDING_CONFIRMATION");
+    if (isProxy) {
+      insertAudit(
+        db,
+        operator.id,
+        "PROXY_PUBLISH",
+        taskId,
+        params.proxyReason as string,
+        null,
+        JSON.stringify({ bookId, stage: params.stage, starLevel: params.starLevel, editorId }),
+        "RESPONSIBLE_EDITOR",
+      );
+    }
+    return taskId;
+  })();
+}
+
+// ===== 2. 确认收稿 =====
+
+export interface ConfirmOptions {
+  companyId?: number; // 代确认时指定目标外校公司
+  proxyReason?: string;
+}
+
+export function confirmReceipt(
+  db: Database.Database,
+  taskId: number,
+  operatorId: number,
+  opts: ConfirmOptions = {},
+): void {
+  const operator = getActiveUser(db, operatorId);
+  if (operator.role !== "EXTERNAL_SUPERVISOR" && operator.role !== "INTERNAL_ADMIN") {
+    throw new TaskServiceError("FORBIDDEN", "无权限：仅外校主管或超级管理员可确认");
+  }
+
+  let companyId: number | null;
+  let isProxy = false;
+  if (operator.role === "EXTERNAL_SUPERVISOR") {
+    if (operator.company_id == null)
+      throw new TaskServiceError("FORBIDDEN", "外校主管未关联公司");
+    companyId = operator.company_id;
+  } else {
+    if (!opts.companyId)
+      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代确认需指定目标外校公司");
+    if (!opts.proxyReason)
+      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代操作需填写原因");
+    const company = db
+      .prepare("SELECT id FROM companies WHERE id = ? AND is_active = 1")
+      .get(opts.companyId);
+    if (!company) throw new TaskServiceError("FORBIDDEN", "目标外校公司不存在或不可用");
+    companyId = opts.companyId;
+    isProxy = true;
+  }
+
+  const confirmedAt = now();
+
+  db.transaction(() => {
+    const info = db
+      .prepare(
+        "UPDATE tasks SET status='READY_TO_START', confirmer_id=?, confirm_company_id=?, confirmed_at=? WHERE id=? AND status='PENDING_CONFIRMATION'",
+      )
+      .run(operator.id, companyId, confirmedAt, taskId);
+
+    if (info.changes === 0) {
+      const task = getTask(db, taskId);
+      if (task.status === "CANCELLED")
+        throw new TaskServiceError("INVALID_STATUS", "已取消任务不能确认");
+      // 已确认（READY_TO_START / IN_PROGRESS / COMPLETED）→ 幂等，不重复记录
+      return;
+    }
+
+    insertEvent(db, taskId, EVENT_CONFIRMED, operator, isProxy, isProxy ? "EXTERNAL_SUPERVISOR" : null, "PENDING_CONFIRMATION", "READY_TO_START");
+    if (isProxy) {
+      insertAudit(
+        db,
+        operator.id,
+        "PROXY_CONFIRM",
+        taskId,
+        opts.proxyReason as string,
+        null,
+        JSON.stringify({ companyId }),
+        "EXTERNAL_SUPERVISOR",
+      );
+    }
+  })();
+}
+
+// ===== 3. 开始校对 =====
+
+export interface StartOptions {
+  proofreaderId?: number; // 代开始时指定目标校对人员
+  proxyReason?: string;
+}
+
+export function startTask(
+  db: Database.Database,
+  taskId: number,
+  operatorId: number,
+  opts: StartOptions = {},
+): void {
+  const operator = getActiveUser(db, operatorId);
+  if (operator.role !== "PROOFREADER" && operator.role !== "INTERNAL_ADMIN") {
+    throw new TaskServiceError("FORBIDDEN", "无权限：仅校对人员或超级管理员可开始");
+  }
+
+  let proofreaderId: number;
+  let isProxy = false;
+  if (operator.role === "PROOFREADER") {
+    proofreaderId = operator.id;
+  } else {
+    if (!opts.proofreaderId)
+      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代开始需指定目标校对人员");
+    if (!opts.proxyReason)
+      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代操作需填写原因");
+    const proofreader = db
+      .prepare("SELECT id FROM users WHERE id = ? AND role = 'PROOFREADER' AND is_active = 1")
+      .get(opts.proofreaderId);
+    if (!proofreader)
+      throw new TaskServiceError("USER_NOT_FOUND", "目标校对人员不存在或不可用");
+    proofreaderId = opts.proofreaderId;
+    isProxy = true;
+  }
+
+  const startedAt = now();
+
+  try {
+    db.transaction(() => {
+      const info = db
+        .prepare(
+          "UPDATE tasks SET status='IN_PROGRESS', proofreader_id=?, started_at=? WHERE id=? AND status='READY_TO_START'",
+        )
+        .run(proofreaderId, startedAt, taskId);
+
+      if (info.changes === 0) {
+        const task = getTask(db, taskId);
+        if (task.status === "IN_PROGRESS")
+          throw new TaskServiceError("TASK_ALREADY_STARTED", "该任务已被领取");
+        if (task.status === "CANCELLED")
+          throw new TaskServiceError("INVALID_STATUS", "已取消任务不能开始");
+        throw new TaskServiceError("INVALID_STATUS", "当前状态不允许开始（需先确认收稿）");
+      }
+
+      insertEvent(db, taskId, EVENT_STARTED, operator, isProxy, isProxy ? "PROOFREADER" : null, "READY_TO_START", "IN_PROGRESS");
+      if (isProxy) {
+        insertAudit(
+          db,
+          operator.id,
+          "PROXY_START",
+          taskId,
+          opts.proxyReason as string,
+          null,
+          JSON.stringify({ proofreaderId }),
+          "PROOFREADER",
+        );
+      }
+    })();
+  } catch (e) {
+    if (isUniqueViolation(e))
+      throw new TaskServiceError("PROOFREADER_BUSY", "该校对人员已有进行中任务");
+    throw e;
+  }
+}
+
+// ===== 4. 结束校对 =====
+
+export interface FinishOptions {
+  proxyReason?: string;
+}
+
+export function finishTask(
+  db: Database.Database,
+  taskId: number,
+  operatorId: number,
+  opts: FinishOptions = {},
+): void {
+  const operator = getActiveUser(db, operatorId);
+  if (operator.role !== "PROOFREADER" && operator.role !== "INTERNAL_ADMIN") {
+    throw new TaskServiceError("FORBIDDEN", "无权限：仅校对人员或超级管理员可结束");
+  }
+
+  const task = getTask(db, taskId);
+
+  let isProxy = false;
+  if (operator.role === "PROOFREADER") {
+    if (task.proofreader_id !== operator.id)
+      throw new TaskServiceError("NOT_TASK_PROOFREADER", "只有当前校对人员可结束该任务");
+  } else {
+    if (!opts.proxyReason)
+      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代操作需填写原因");
+    isProxy = true;
+  }
+
+  if (task.status === "COMPLETED") return; // 幂等
+  if (task.status !== "IN_PROGRESS")
+    throw new TaskServiceError("INVALID_STATUS", "当前状态不允许结束");
+
+  const finishedAt = now();
+
+  db.transaction(() => {
+    const info = db
+      .prepare(
+        "UPDATE tasks SET status='COMPLETED', finisher_id=?, finished_at=? WHERE id=? AND status='IN_PROGRESS'",
+      )
+      .run(operator.id, finishedAt, taskId);
+
+    if (info.changes === 0) {
+      const current = getTask(db, taskId);
+      if (current.status === "COMPLETED") return; // 并发下幂等
+      throw new TaskServiceError("INVALID_STATUS", "当前状态不允许结束");
+    }
+
+    insertEvent(db, taskId, EVENT_COMPLETED, operator, isProxy, isProxy ? "PROOFREADER" : null, "IN_PROGRESS", "COMPLETED");
+    if (isProxy) {
+      insertAudit(
+        db,
+        operator.id,
+        "PROXY_FINISH",
+        taskId,
+        opts.proxyReason as string,
+        JSON.stringify({ proofreader_id: task.proofreader_id }),
+        JSON.stringify({ status: "COMPLETED" }),
+        "PROOFREADER",
+      );
+    }
+  })();
+}
+
+// ===== 5. 超级管理员取消 =====
+
+export function cancelTask(
+  db: Database.Database,
+  taskId: number,
+  operatorId: number,
+  reason: string,
+): void {
+  const operator = getActiveUser(db, operatorId);
+  if (operator.role !== "INTERNAL_ADMIN")
+    throw new TaskServiceError("FORBIDDEN", "无权限：仅超级管理员可取消");
+  if (!reason) throw new TaskServiceError("PROXY_REASON_REQUIRED", "取消原因必填");
+
+  const task = getTask(db, taskId);
+  if (task.status === "CANCELLED") return; // 幂等
+  if (task.status === "IN_PROGRESS" || task.status === "COMPLETED")
+    throw new TaskServiceError("INVALID_STATUS", "进行中或已结束的任务不能取消");
+
+  const cancelledAt = now();
+
+  db.transaction(() => {
+    const info = db
+      .prepare(
+        "UPDATE tasks SET status='CANCELLED', cancelled_by=?, cancelled_at=?, cancellation_reason=? WHERE id=? AND status IN ('PENDING_CONFIRMATION','READY_TO_START')",
+      )
+      .run(operator.id, cancelledAt, reason, taskId);
+
+    if (info.changes === 0) {
+      const current = getTask(db, taskId);
+      if (current.status === "CANCELLED") return; // 并发下幂等
+      throw new TaskServiceError("INVALID_STATUS", "当前状态不允许取消");
+    }
+
+    insertEvent(db, taskId, EVENT_CANCELLED, operator, false, null, task.status, "CANCELLED");
+    insertAudit(
+      db,
+      operator.id,
+      "CANCEL",
+      taskId,
+      reason,
+      JSON.stringify({ status: task.status }),
+      JSON.stringify({ status: "CANCELLED" }),
+      null,
+    );
+  })();
+}
