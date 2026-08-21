@@ -12,7 +12,9 @@ export type TaskErrorCode =
   | "PROOFREADER_BUSY"
   | "NOT_TASK_PROOFREADER"
   | "PROXY_REASON_REQUIRED"
-  | "INVALID_STAGE_OR_STAR";
+  | "INVALID_STAGE_OR_STAR"
+  | "INVALID_INPUT"
+  | "INVALID_COMPANY";
 
 export class TaskServiceError extends Error {
   readonly code: TaskErrorCode;
@@ -21,6 +23,12 @@ export class TaskServiceError extends Error {
     this.name = "TaskServiceError";
     this.code = code;
   }
+}
+
+// 将任意错误转换为可安全展示给用户的中文提示，绝不泄露 SQLite 原始错误。
+export function taskErrorMessage(err: unknown): string {
+  if (err instanceof TaskServiceError) return err.message;
+  return "操作失败，请稍后重试";
 }
 
 // ===== 常量 =====
@@ -156,6 +164,7 @@ export interface PublishParams {
   stage: string;
   starLevel: number;
   note?: string;
+  companyId?: number; // 接收外校公司
   editorId?: number; // 代发时指定目标责任编辑
   proxyReason?: string; // 代发原因
 }
@@ -168,23 +177,54 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
   assertStage(params.stage);
   assertStar(params.starLevel);
 
+  // 备注：可选，最多 200 字
+  const note = (params.note ?? "").trim();
+  if (note.length > 200)
+    throw new TaskServiceError("INVALID_INPUT", "备注最多 200 字");
+
+  // 接收外校公司：真实存在、启用且类型为 EXTERNAL
+  if (params.companyId != null) {
+    const company = db
+      .prepare(
+        "SELECT id FROM companies WHERE id = ? AND type = 'EXTERNAL' AND is_active = 1",
+      )
+      .get(params.companyId);
+    if (!company)
+      throw new TaskServiceError("INVALID_COMPANY", "接收外校公司不存在、已停用或不是外校公司");
+  }
+
   let editorId: number;
   let isProxy = false;
+  let proxyReason = "";
   if (operator.role === "RESPONSIBLE_EDITOR") {
     editorId = operator.id;
   } else {
-    if (!params.editorId)
-      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代发布需指定目标责任编辑");
-    if (!params.proxyReason)
+    proxyReason = (params.proxyReason ?? "").trim();
+    if (!proxyReason)
       throw new TaskServiceError("PROXY_REASON_REQUIRED", "代操作需填写原因");
+    if (proxyReason.length > 200)
+      throw new TaskServiceError("INVALID_INPUT", "代发布原因最多 200 字");
+
+    // 已有书稿：责任编辑由书稿的 editor_id 自动确定，不允许改挂到其他责任编辑
+    let targetEditorId: number | null | undefined = params.editorId;
+    if (params.bookId != null) {
+      const book = db
+        .prepare("SELECT editor_id FROM books WHERE id = ?")
+        .get(params.bookId) as { editor_id: number | null } | undefined;
+      if (!book) throw new TaskServiceError("TASK_NOT_FOUND", "指定的书稿不存在");
+      targetEditorId = book.editor_id;
+    }
+    if (targetEditorId == null)
+      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代发布需指定目标责任编辑");
+
     const editor = db
       .prepare(
         "SELECT id FROM users WHERE id = ? AND role = 'RESPONSIBLE_EDITOR' AND is_active = 1",
       )
-      .get(params.editorId);
+      .get(targetEditorId);
     if (!editor)
       throw new TaskServiceError("USER_NOT_FOUND", "目标责任编辑不存在或不可用");
-    editorId = params.editorId;
+    editorId = targetEditorId;
     isProxy = true;
   }
 
@@ -193,29 +233,35 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
   return db.transaction(() => {
     let bookId = params.bookId;
     if (!bookId) {
-      if (!params.bookTitle)
-        throw new TaskServiceError("INVALID_STAGE_OR_STAR", "需提供 bookId 或书名");
+      const title = (params.bookTitle ?? "").trim();
+      if (!title) throw new TaskServiceError("INVALID_INPUT", "书名不能为空");
       const bookResult = db
         .prepare("INSERT INTO books(title, editor_id, identifier) VALUES (?,?,?)")
-        .run(params.bookTitle, editorId, params.identifier ?? null);
+        .run(title, editorId, params.identifier ?? null);
       bookId = Number(bookResult.lastInsertRowid);
     } else {
-      const book = db.prepare("SELECT id FROM books WHERE id = ?").get(bookId);
-      if (!book) throw new TaskServiceError("TASK_NOT_FOUND", "指定的 bookId 不存在");
+      const book = db
+        .prepare("SELECT id, editor_id FROM books WHERE id = ?")
+        .get(bookId) as { id: number; editor_id: number | null } | undefined;
+      if (!book) throw new TaskServiceError("TASK_NOT_FOUND", "指定的书稿不存在");
+      // 普通责任编辑只能继续发起属于自己的书稿
+      if (!isProxy && book.editor_id !== editorId)
+        throw new TaskServiceError("FORBIDDEN", "无权使用该书稿");
     }
 
     const taskResult = db
       .prepare(
-        "INSERT INTO tasks(book_id, stage, star_level, status, note, publisher_id, published_at) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO tasks(book_id, stage, star_level, status, note, publisher_id, published_at, company_id) VALUES (?,?,?,?,?,?,?,?)",
       )
       .run(
         bookId,
         params.stage,
         params.starLevel,
         "PENDING_CONFIRMATION",
-        params.note ?? null,
+        note || null,
         editorId,
         publishedAt,
+        params.companyId ?? null,
       );
     const taskId = Number(taskResult.lastInsertRowid);
 
@@ -226,9 +272,9 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
         operator.id,
         "PROXY_PUBLISH",
         taskId,
-        params.proxyReason as string,
+        proxyReason,
         null,
-        JSON.stringify({ bookId, stage: params.stage, starLevel: params.starLevel, editorId }),
+        JSON.stringify({ bookId, stage: params.stage, starLevel: params.starLevel, editorId, companyId: params.companyId ?? null }),
         "RESPONSIBLE_EDITOR",
       );
     }
@@ -491,4 +537,76 @@ export function cancelTask(
       null,
     );
   })();
+}
+
+// ===== 查询助手（供发布页面读取，避免 SQL 散落到页面组件） =====
+
+export interface ExternalCompanyOption {
+  id: number;
+  name: string;
+}
+
+export function listActiveExternalCompanies(db: Database.Database): ExternalCompanyOption[] {
+  return db
+    .prepare(
+      "SELECT id, name FROM companies WHERE type = 'EXTERNAL' AND is_active = 1 ORDER BY name, id",
+    )
+    .all() as ExternalCompanyOption[];
+}
+
+export interface BookOption {
+  id: number;
+  title: string;
+  editorName: string | null;
+}
+
+// editorId 指定时只返回该责任编辑的书稿；省略时返回全部书稿（供超级管理员）。
+export function listBooks(db: Database.Database, editorId?: number): BookOption[] {
+  const base =
+    "SELECT b.id, b.title, u.display_name AS editorName FROM books b LEFT JOIN users u ON u.id = b.editor_id";
+  if (editorId != null) {
+    return db.prepare(`${base} WHERE b.editor_id = ? ORDER BY b.id DESC`).all(editorId) as BookOption[];
+  }
+  return db.prepare(`${base} ORDER BY b.id DESC`).all() as BookOption[];
+}
+
+export interface EditorOption {
+  id: number;
+  display_name: string;
+  username: string;
+}
+
+export function listActiveEditors(db: Database.Database): EditorOption[] {
+  return db
+    .prepare(
+      "SELECT id, display_name, username FROM users WHERE role = 'RESPONSIBLE_EDITOR' AND is_active = 1 ORDER BY display_name, id",
+    )
+    .all() as EditorOption[];
+}
+
+// 按姓名或登录账号做部分匹配（不区分大小写），用于搜索型下拉框。
+export function filterEditorsByQuery(
+  editors: EditorOption[],
+  query: string,
+): EditorOption[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return editors;
+  return editors.filter(
+    (e) =>
+      e.display_name.toLowerCase().includes(q) ||
+      e.username.toLowerCase().includes(q),
+  );
+}
+
+// 输入文字已偏离所选责任编辑姓名时应清除选择（防止显示名与实际 ID 不一致）。
+export function editorSelectionClearsOn(
+  selectedDisplayName: string | null,
+  query: string,
+): boolean {
+  return selectedDisplayName != null && query.trim() !== selectedDisplayName;
+}
+
+// 判断角色是否为可代发布的超级管理员（发布页面据此决定是否显示代发布区域）。
+export function isAdminRole(role: string): boolean {
+  return role === "INTERNAL_ADMIN";
 }

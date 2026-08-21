@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   -- 发布（发布时间 = 来稿时间 = 滞留计时起点）
   publisher_id        INTEGER REFERENCES users(id),
   published_at        TEXT,
+  -- 接收外校公司（发布时确定，后续由该公司主管确认收稿）
+  company_id          INTEGER REFERENCES companies(id),
   -- 确认收稿
   confirmer_id        INTEGER REFERENCES users(id),
   confirm_company_id  INTEGER REFERENCES companies(id),
