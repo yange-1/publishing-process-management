@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 export type TaskErrorCode =
   | "USER_NOT_FOUND"
   | "USER_INACTIVE"
+  | "MUST_CHANGE_PASSWORD"
   | "FORBIDDEN"
   | "TASK_NOT_FOUND"
   | "INVALID_STATUS"
@@ -55,6 +56,7 @@ interface UserRow {
   role: string;
   company_id: number | null;
   is_active: number;
+  must_change_password: number;
 }
 
 interface TaskRow {
@@ -70,12 +72,14 @@ function now(): string {
 function getActiveUser(db: Database.Database, userId: number): UserRow {
   const user = db
     .prepare(
-      "SELECT id, role, company_id, is_active FROM users WHERE id = ?",
+      "SELECT id, role, company_id, is_active, must_change_password FROM users WHERE id = ?",
     )
     .get(userId) as UserRow | undefined;
   if (!user) throw new TaskServiceError("USER_NOT_FOUND", "用户不存在");
   if (user.is_active !== 1)
     throw new TaskServiceError("USER_INACTIVE", "用户已停用");
+  if (user.must_change_password === 1)
+    throw new TaskServiceError("MUST_CHANGE_PASSWORD", "请先完成首次改密");
   return user;
 }
 
@@ -285,43 +289,51 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
 // ===== 2. 确认收稿 =====
 
 export interface ConfirmOptions {
-  companyId?: number; // 代确认时指定目标外校公司
-  proxyReason?: string;
+  proxyReason?: string; // 管理员代确认时填写
 }
+
+export type ConfirmResult = "confirmed" | "already_confirmed";
 
 export function confirmReceipt(
   db: Database.Database,
   taskId: number,
   operatorId: number,
   opts: ConfirmOptions = {},
-): void {
+): ConfirmResult {
   const operator = getActiveUser(db, operatorId);
   if (operator.role !== "EXTERNAL_SUPERVISOR" && operator.role !== "INTERNAL_ADMIN") {
     throw new TaskServiceError("FORBIDDEN", "无权限：仅外校主管或超级管理员可确认");
   }
 
+  const task = db
+    .prepare("SELECT id, status, company_id FROM tasks WHERE id = ?")
+    .get(taskId) as { id: number; status: string; company_id: number | null } | undefined;
+  if (!task) throw new TaskServiceError("TASK_NOT_FOUND", "任务不存在");
+
   let companyId: number | null;
   let isProxy = false;
+  let proxyReason = "";
   if (operator.role === "EXTERNAL_SUPERVISOR") {
     if (operator.company_id == null)
       throw new TaskServiceError("FORBIDDEN", "外校主管未关联公司");
+    if (task.company_id !== operator.company_id)
+      throw new TaskServiceError("FORBIDDEN", "不能确认其他外校公司的任务");
     companyId = operator.company_id;
   } else {
-    if (!opts.companyId)
-      throw new TaskServiceError("PROXY_REASON_REQUIRED", "代确认需指定目标外校公司");
-    if (!opts.proxyReason)
+    proxyReason = (opts.proxyReason ?? "").trim();
+    if (!proxyReason)
       throw new TaskServiceError("PROXY_REASON_REQUIRED", "代操作需填写原因");
-    const company = db
-      .prepare("SELECT id FROM companies WHERE id = ? AND is_active = 1")
-      .get(opts.companyId);
-    if (!company) throw new TaskServiceError("FORBIDDEN", "目标外校公司不存在或不可用");
-    companyId = opts.companyId;
+    if (proxyReason.length > 200)
+      throw new TaskServiceError("INVALID_INPUT", "代确认原因最多 200 字");
+    if (task.company_id == null)
+      throw new TaskServiceError("INVALID_STATUS", "该任务未指定接收外校公司");
+    companyId = task.company_id; // 代确认目标公司 = 任务已有 company_id，不允许改换
     isProxy = true;
   }
 
   const confirmedAt = now();
 
-  db.transaction(() => {
+  return db.transaction(() => {
     const info = db
       .prepare(
         "UPDATE tasks SET status='READY_TO_START', confirmer_id=?, confirm_company_id=?, confirmed_at=? WHERE id=? AND status='PENDING_CONFIRMATION'",
@@ -329,11 +341,12 @@ export function confirmReceipt(
       .run(operator.id, companyId, confirmedAt, taskId);
 
     if (info.changes === 0) {
-      const task = getTask(db, taskId);
-      if (task.status === "CANCELLED")
+      const current = getTask(db, taskId);
+      if (current.status === "CANCELLED")
         throw new TaskServiceError("INVALID_STATUS", "已取消任务不能确认");
-      // 已确认（READY_TO_START / IN_PROGRESS / COMPLETED）→ 幂等，不重复记录
-      return;
+      if (current.status === "IN_PROGRESS" || current.status === "COMPLETED")
+        throw new TaskServiceError("INVALID_STATUS", "当前状态不允许确认收稿");
+      return "already_confirmed"; // READY_TO_START：已被确认，无需重复操作
     }
 
     insertEvent(db, taskId, EVENT_CONFIRMED, operator, isProxy, isProxy ? "EXTERNAL_SUPERVISOR" : null, "PENDING_CONFIRMATION", "READY_TO_START");
@@ -343,12 +356,13 @@ export function confirmReceipt(
         operator.id,
         "PROXY_CONFIRM",
         taskId,
-        opts.proxyReason as string,
-        null,
-        JSON.stringify({ companyId }),
+        proxyReason,
+        JSON.stringify({ status: "PENDING_CONFIRMATION" }),
+        JSON.stringify({ status: "READY_TO_START", companyId }),
         "EXTERNAL_SUPERVISOR",
       );
     }
+    return "confirmed";
   })();
 }
 
@@ -609,4 +623,44 @@ export function editorSelectionClearsOn(
 // 判断角色是否为可代发布的超级管理员（发布页面据此决定是否显示代发布区域）。
 export function isAdminRole(role: string): boolean {
   return role === "INTERNAL_ADMIN";
+}
+
+// ===== 待确认收稿列表查询（仅供页面读取，不返回敏感字段） =====
+
+export interface PendingConfirmationItem {
+  id: number;
+  title: string;
+  stage: string;
+  starLevel: number;
+  editorName: string | null;
+  publisherCompanyName: string | null;
+  companyName: string | null;
+  companyId: number | null;
+  publishedAt: string;
+  status: string;
+}
+
+export function listPendingConfirmation(
+  db: Database.Database,
+): PendingConfirmationItem[] {
+  return db
+    .prepare(
+      `SELECT t.id, b.title, t.stage, t.star_level AS starLevel,
+              t.published_at AS publishedAt, t.status, t.company_id AS companyId,
+              u.display_name AS editorName,
+              cu.name AS publisherCompanyName,
+              c.name AS companyName
+       FROM tasks t
+       JOIN books b ON b.id = t.book_id
+       LEFT JOIN users u ON u.id = t.publisher_id
+       LEFT JOIN companies cu ON cu.id = u.company_id
+       LEFT JOIN companies c ON c.id = t.company_id
+       WHERE t.status = 'PENDING_CONFIRMATION'
+       ORDER BY t.star_level DESC, t.published_at ASC, t.id ASC`,
+    )
+    .all() as PendingConfirmationItem[];
+}
+
+export function countPendingConfirmation(db: Database.Database): number {
+  return (db.prepare("SELECT COUNT(*) c FROM tasks WHERE status = 'PENDING_CONFIRMATION'").get() as { c: number }).c;
 }

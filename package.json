@@ -15,7 +15,9 @@
     "test:auth": "node --test test/auth.test.ts",
     "test:users": "node --test test/user-admin.test.ts",
     "test:users-page": "node --test test/user-admin-page.test.ts",
-    "test:publish": "node --test test/task-publish.test.ts"
+    "test:publish": "node --test test/task-publish.test.ts",
+    "test:receipt": "node --test test/task-receipt.test.ts",
+    "test:dashboard": "node --test test/dashboard.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

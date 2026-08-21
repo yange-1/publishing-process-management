@@ -1,17 +1,17 @@
 import Link from "next/link";
-import OverdueRow from "@/components/OverdueRow";
-import ProductionRow from "@/components/ProductionRow";
-import WarehouseRow from "@/components/WarehouseRow";
-import {
-  MOCK_PROJECTS,
-  isProduction,
-  isWarehouse,
-  overdueInfo,
-  sortOverdue,
-  sortProjects,
-} from "@/components/projects";
 import { requireCurrentUser } from "@/lib/session";
+import { openDatabase } from "@/lib/db";
+import {
+  listWarehouse,
+  listProduction,
+  listCompleted,
+  listOverdue,
+  countActiveBooks,
+} from "@/lib/dashboard-service";
+import { countPendingConfirmation } from "@/lib/task-service";
 import UserBar from "@/app/components/UserBar";
+import DashboardTaskRow from "@/components/DashboardTaskRow";
+import DashboardOverdueRow from "@/components/DashboardOverdueRow";
 
 type StatTone = "slate" | "amber" | "blue" | "red" | "emerald";
 
@@ -42,32 +42,35 @@ function StatCard({
   );
 }
 
-const NAV_ITEMS = ["总览", "书稿仓库", "生产线", "已完成"] as const;
-
 export default async function Home() {
   const user = await requireCurrentUser();
-  const today = new Date();
+  const now = new Date();
 
-  const warehouse = sortProjects(MOCK_PROJECTS.filter(isWarehouse));
-  const production = sortProjects(MOCK_PROJECTS.filter(isProduction));
-  const completed = MOCK_PROJECTS.filter((p) => p.status === "已完成");
+  const db = openDatabase();
+  let warehouse;
+  let production;
+  let completed;
+  let overdue;
+  let activeBooks;
+  let pendingCount;
+  try {
+    warehouse = listWarehouse(db);
+    production = listProduction(db);
+    completed = listCompleted(db);
+    overdue = listOverdue(db, now);
+    activeBooks = countActiveBooks(db);
+    pendingCount = countPendingConfirmation(db);
+  } finally {
+    db.close();
+  }
 
-  const overdueAll = sortOverdue(
-    MOCK_PROJECTS.filter(
-      (p) => p.status !== "已完成" && overdueInfo(p, today).isOverdue,
-    ),
-    today,
-  );
-  const shownOverdue = overdueAll.slice(0, 20);
-
-  const totalActive = warehouse.length + production.length;
+  const shownWarehouse = warehouse.slice(0, 20);
+  const shownOverdue = overdue.slice(0, 20);
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-6">
       <header className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">
-          出版校对流程管理平台
-        </h1>
+        <h1 className="text-2xl font-bold text-gray-900">出版校对流程管理平台</h1>
         <div className="flex items-center gap-3">
           {user.role === "INTERNAL_ADMIN" && (
             <Link
@@ -77,6 +80,12 @@ export default async function Home() {
               账号管理
             </Link>
           )}
+          <Link
+            href="/tasks/pending-confirmation"
+            className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+          >
+            待确认收稿（{pendingCount}）
+          </Link>
           {(user.role === "RESPONSIBLE_EDITOR" || user.role === "INTERNAL_ADMIN") && (
             <Link
               href="/tasks/new"
@@ -89,47 +98,11 @@ export default async function Home() {
         </div>
       </header>
 
-      <nav className="mb-4 flex flex-wrap gap-2">
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={
-              item === "总览"
-                ? "rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white"
-                : "rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-            }
-          >
-            {item}
-          </button>
-        ))}
-      </nav>
-
-      <section className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            aria-label="搜索书稿"
-            placeholder="请输入书名或责任编辑"
-            className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400"
-          />
-          <button
-            type="button"
-            className="rounded-md bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            搜索
-          </button>
-        </div>
-        <p className="mt-2 text-xs text-gray-500">
-          编辑可查询书稿是否进入生产线及校对历史
-        </p>
-      </section>
-
       <section className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard label="部门现存书稿" value={totalActive} tone="slate" />
+        <StatCard label="部门现有书稿" value={activeBooks} tone="slate" />
         <StatCard label="书稿仓库" value={warehouse.length} tone="amber" />
         <StatCard label="生产线" value={production.length} tone="blue" />
-        <StatCard label="滞留任务" value={overdueAll.length} tone="red" />
+        <StatCard label="滞留任务" value={overdue.length} tone="red" />
         <StatCard label="已完成任务" value={completed.length} tone="emerald" />
       </section>
 
@@ -138,71 +111,90 @@ export default async function Home() {
           <section>
             <div className="mb-3 flex items-baseline justify-between">
               <h2 className="text-lg font-semibold text-gray-900">书稿仓库</h2>
-              <span className="text-sm text-gray-500">
-                共 {warehouse.length} 条
-              </span>
+              <span className="text-sm text-gray-500">共 {warehouse.length} 条</span>
             </div>
-            <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg bg-white shadow-sm">
-              {warehouse.map((project) => (
-                <WarehouseRow key={project.id} project={project} today={today} />
-              ))}
-            </ul>
-            <button
-              type="button"
-              className="mt-3 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
-            >
-              进入书稿仓库查看更多
-            </button>
+            {shownWarehouse.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400">
+                当前没有待确认收稿或待开始的任务
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                {shownWarehouse.map((task) => (
+                  <DashboardTaskRow key={task.id} task={task} now={now} />
+                ))}
+              </ul>
+            )}
+            {warehouse.length > 20 && (
+              <Link
+                href="/tasks/warehouse"
+                className="mt-3 inline-block w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-center text-sm text-gray-600 hover:bg-gray-50"
+              >
+                查看更多
+              </Link>
+            )}
           </section>
 
           <section>
             <div className="mb-3 flex items-baseline justify-between">
               <h2 className="text-lg font-semibold text-gray-900">生产线</h2>
-              <span className="text-sm text-gray-500">
-                共 {production.length} 条
-              </span>
+              <span className="text-sm text-gray-500">共 {production.length} 条</span>
             </div>
-            <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg bg-white shadow-sm">
-              {production.map((project) => (
-                <ProductionRow
-                  key={project.id}
-                  project={project}
-                  today={today}
-                />
-              ))}
-            </ul>
-            <button
-              type="button"
-              className="mt-3 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
-            >
-              查看完整生产线
-            </button>
+            {production.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400">
+                当前没有进行中的校对任务
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                {production.map((task) => (
+                  <DashboardTaskRow key={task.id} task={task} now={now} />
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">已完成</h2>
+              <span className="text-sm text-gray-500">共 {completed.length} 条</span>
+            </div>
+            {completed.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400">
+                当前没有已完成的校对任务
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                {completed.map((task) => (
+                  <DashboardTaskRow key={task.id} task={task} now={now} />
+                ))}
+              </ul>
+            )}
           </section>
         </div>
 
         <aside>
           <div className="mb-3 flex items-baseline justify-between">
             <h2 className="text-lg font-semibold text-red-700">总控预警</h2>
-            <span className="text-sm text-gray-500">
-              共 {overdueAll.length} 条
-            </span>
+            <span className="text-sm text-gray-500">共 {overdue.length} 条</span>
           </div>
-          <ul className="space-y-2">
-            {shownOverdue.map((project) => (
-              <OverdueRow
-                key={project.id}
-                project={project}
-                today={today}
-                kind={isWarehouse(project) ? "warehouse" : "production"}
-              />
-            ))}
-          </ul>
-          <button
-            type="button"
-            className="mt-4 w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 hover:bg-red-100"
-          >
-            查看全部滞留任务
-          </button>
+          {shownOverdue.length === 0 ? (
+            <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400">
+              当前没有滞留任务
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {shownOverdue.map((item) => (
+                <DashboardOverdueRow key={item.id} item={item} />
+              ))}
+            </ul>
+          )}
+          {overdue.length > 20 && (
+            <Link
+              href="/tasks/warehouse"
+              className="mt-4 inline-block w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-center text-sm text-red-600 hover:bg-red-100"
+            >
+              查看更多
+            </Link>
+          )}
         </aside>
       </div>
     </main>

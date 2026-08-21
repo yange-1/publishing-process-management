@@ -89,6 +89,7 @@ function publishThenConfirmThenStart(db: Database.Database): number {
     bookTitle: "测试图书A",
     stage: "FIRST_PROOF",
     starLevel: 2,
+    companyId: 2,
   });
   confirmReceipt(db, taskId, 3); // 外校主管确认
   startTask(db, taskId, 4); // 校对甲开始
@@ -142,7 +143,7 @@ test("3. 超级管理员代发布生成审计记录", () => {
 
 test("4. 外校主管确认成功", () => {
   const db = freshDb();
-  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1 });
+  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   confirmReceipt(db, taskId, 3);
   assert.strictEqual(status(db, taskId), "READY_TO_START");
   assert.strictEqual(eventCount(db, taskId, "RECEIPT_CONFIRMED"), 1);
@@ -155,7 +156,7 @@ test("4. 外校主管确认成功", () => {
 
 test("5. 重复确认不生成重复事件", () => {
   const db = freshDb();
-  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1 });
+  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   confirmReceipt(db, taskId, 3);
   const confirmer = db.prepare("SELECT confirmer_id, confirmed_at FROM tasks WHERE id = ?").get(taskId) as { confirmer_id: number; confirmed_at: string };
   confirmReceipt(db, taskId, 3); // 重复确认
@@ -168,7 +169,7 @@ test("5. 重复确认不生成重复事件", () => {
 
 test("6. 校对人员开始成功", () => {
   const db = freshDb();
-  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1 });
+  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   confirmReceipt(db, taskId, 3);
   startTask(db, taskId, 4);
   assert.strictEqual(status(db, taskId), "IN_PROGRESS");
@@ -181,7 +182,7 @@ test("6. 校对人员开始成功", () => {
 
 test("7. 两名校对人员开始同一任务，只有一人成功", () => {
   const db = freshDb();
-  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1 });
+  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   confirmReceipt(db, taskId, 3);
   startTask(db, taskId, 4); // 校对甲成功
   assertThrowsCode(() => startTask(db, taskId, 5), "TASK_ALREADY_STARTED"); // 校对乙失败
@@ -193,7 +194,7 @@ test("7. 两名校对人员开始同一任务，只有一人成功", () => {
 test("8. 同一校对人员不能开始第二本", () => {
   const db = freshDb();
   const a = publishThenConfirmThenStart(db);
-  const b = publishTask(db, { operatorId: 1, bookTitle: "第二本", stage: "INITIAL_REVIEW", starLevel: 1 });
+  const b = publishTask(db, { operatorId: 1, bookTitle: "第二本", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   confirmReceipt(db, b, 3);
   assertThrowsCode(() => startTask(db, b, 4), "PROOFREADER_BUSY"); // 校对甲已有进行中
   assert.strictEqual(status(db, b), "READY_TO_START"); // 未改变
@@ -228,7 +229,7 @@ test("11. 重复结束不生成重复事件", () => {
 
 test("12. 管理员代开始生成审计记录", () => {
   const db = freshDb();
-  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1 });
+  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   confirmReceipt(db, taskId, 3);
   const before = auditCount(db);
   startTask(db, taskId, 6, { proofreaderId: 4, proxyReason: "代开始" });
@@ -241,11 +242,11 @@ test("12. 管理员代开始生成审计记录", () => {
 
 test("13. 只有待确认或待开始可取消", () => {
   const db = freshDb();
-  const a = publishTask(db, { operatorId: 1, bookTitle: "待确认", stage: "INITIAL_REVIEW", starLevel: 1 });
+  const a = publishTask(db, { operatorId: 1, bookTitle: "待确认", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   cancelTask(db, a, 6, "误发"); // 待确认可取消
   assert.strictEqual(status(db, a), "CANCELLED");
 
-  const b = publishTask(db, { operatorId: 1, bookTitle: "待开始", stage: "INITIAL_REVIEW", starLevel: 1 });
+  const b = publishTask(db, { operatorId: 1, bookTitle: "待开始", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   confirmReceipt(db, b, 3);
   cancelTask(db, b, 6, "撤回"); // 待开始可取消
   assert.strictEqual(status(db, b), "CANCELLED");
@@ -257,7 +258,7 @@ test("13. 只有待确认或待开始可取消", () => {
 
 test("14. task_events 和 audit_log 不能更新或删除", () => {
   const db = freshDb();
-  publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1 });
+  publishTask(db, { operatorId: 1, bookTitle: "书", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
   assert.throws(() => db.prepare("UPDATE task_events SET note = 'x' WHERE id = 1").run());
   assert.throws(() => db.prepare("DELETE FROM task_events WHERE id = 1").run());
   // 补一条审计后验证 audit_log 只追加
@@ -285,7 +286,7 @@ test("15. 事务回滚：失败不留半条记录", () => {
 
 test("16. 完整流程只形成四条事件", () => {
   const db = freshDb();
-  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "FIRST_PROOF", starLevel: 2 });
+  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "FIRST_PROOF", starLevel: 2, companyId: 2 });
   confirmReceipt(db, taskId, 3);
   startTask(db, taskId, 4);
   finishTask(db, taskId, 4);
@@ -299,7 +300,7 @@ test("16. 完整流程只形成四条事件", () => {
 
 test("17. 所有操作人和时间均由系统生成", () => {
   const db = freshDb();
-  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "FIRST_PROOF", starLevel: 2 });
+  const taskId = publishTask(db, { operatorId: 1, bookTitle: "书", stage: "FIRST_PROOF", starLevel: 2, companyId: 2 });
   confirmReceipt(db, taskId, 3);
   startTask(db, taskId, 4);
   finishTask(db, taskId, 4);
