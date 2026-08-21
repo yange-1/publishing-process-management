@@ -158,7 +158,13 @@ export function listOverdue(
       };
     })
     .filter((r) => r.exceedDays > 0)
-    .sort((a, b) => b.exceedDays - a.exceedDays || b.starLevel - a.starLevel || a.id - b.id);
+    .sort(
+      (a, b) =>
+        b.exceedDays - a.exceedDays ||
+        b.starLevel - a.starLevel ||
+        a.publishedAt.localeCompare(b.publishedAt) ||
+        a.id - b.id,
+    );
 }
 
 // 部门现有书稿：处于待确认/待开始/进行中的不同书稿数量。
