@@ -8,10 +8,15 @@ import {
   listOverdue,
   countActiveBooks,
 } from "@/lib/dashboard-service";
-import { countPendingConfirmation } from "@/lib/task-service";
+import {
+  countPendingConfirmation,
+  listActiveProofreaders,
+  type ProofreaderOption,
+} from "@/lib/task-service";
 import UserBar from "@/app/components/UserBar";
 import DashboardTaskRow from "@/components/DashboardTaskRow";
 import DashboardOverdueRow from "@/components/DashboardOverdueRow";
+import StartActions from "@/components/StartActions";
 
 type StatTone = "slate" | "amber" | "blue" | "red" | "emerald";
 
@@ -53,6 +58,7 @@ export default async function Home() {
   let overdue;
   let activeBooks;
   let pendingCount;
+  const proofreadersByCompany = new Map<number, ProofreaderOption[]>();
   try {
     warehouse = listWarehouse(db);
     production = listProduction(db);
@@ -60,6 +66,17 @@ export default async function Home() {
     overdue = listOverdue(db, now);
     activeBooks = countActiveBooks(db);
     pendingCount = countPendingConfirmation(db);
+    if (user.role === "INTERNAL_ADMIN") {
+      for (const task of warehouse) {
+        if (
+          task.status === "READY_TO_START" &&
+          task.companyId != null &&
+          !proofreadersByCompany.has(task.companyId)
+        ) {
+          proofreadersByCompany.set(task.companyId, listActiveProofreaders(db, task.companyId));
+        }
+      }
+    }
   } finally {
     db.close();
   }
@@ -119,9 +136,34 @@ export default async function Home() {
               </div>
             ) : (
               <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-                {shownWarehouse.map((task) => (
-                  <DashboardTaskRow key={task.id} task={task} now={now} />
-                ))}
+                {shownWarehouse.map((task) => {
+                  const isMine =
+                    user.role === "PROOFREADER" && task.companyId === user.company_id;
+                  const isAdmin = user.role === "INTERNAL_ADMIN";
+                  const canAct = (isMine || isAdmin) && task.status === "READY_TO_START";
+                  const action = canAct ? (
+                    <StartActions
+                      taskId={task.id}
+                      taskCompanyId={task.companyId}
+                      currentRole={user.role}
+                      currentCompanyId={user.company_id ?? null}
+                      proofreaders={
+                        isAdmin && task.companyId != null
+                          ? proofreadersByCompany.get(task.companyId) ?? []
+                          : []
+                      }
+                    />
+                  ) : undefined;
+                  return (
+                    <DashboardTaskRow
+                      key={task.id}
+                      task={task}
+                      now={now}
+                      currentUserId={user.id}
+                      action={action}
+                    />
+                  );
+                })}
               </ul>
             )}
             {warehouse.length > 20 && (
@@ -146,7 +188,7 @@ export default async function Home() {
             ) : (
               <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
                 {production.map((task) => (
-                  <DashboardTaskRow key={task.id} task={task} now={now} />
+                  <DashboardTaskRow key={task.id} task={task} now={now} currentUserId={user.id} />
                 ))}
               </ul>
             )}

@@ -384,20 +384,36 @@ export function startTask(
     throw new TaskServiceError("FORBIDDEN", "无权限：仅校对人员或超级管理员可开始");
   }
 
+  const task = db
+    .prepare("SELECT id, status, company_id FROM tasks WHERE id = ?")
+    .get(taskId) as { id: number; status: string; company_id: number | null } | undefined;
+  if (!task) throw new TaskServiceError("TASK_NOT_FOUND", "任务不存在");
+
   let proofreaderId: number;
   let isProxy = false;
+  let proxyReason = "";
   if (operator.role === "PROOFREADER") {
+    if (operator.company_id == null)
+      throw new TaskServiceError("FORBIDDEN", "校对人员未关联公司");
+    if (task.company_id !== operator.company_id)
+      throw new TaskServiceError("FORBIDDEN", "不能开始其他外校公司的任务");
     proofreaderId = operator.id;
   } else {
+    proxyReason = (opts.proxyReason ?? "").trim();
     if (!opts.proofreaderId)
       throw new TaskServiceError("PROXY_REASON_REQUIRED", "代开始需指定目标校对人员");
-    if (!opts.proxyReason)
+    if (!proxyReason)
       throw new TaskServiceError("PROXY_REASON_REQUIRED", "代操作需填写原因");
+    if (proxyReason.length > 200)
+      throw new TaskServiceError("INVALID_INPUT", "代操作原因最多 200 字");
+    // 目标校对人员必须启用、角色正确、且与任务接收外校公司相同
     const proofreader = db
-      .prepare("SELECT id FROM users WHERE id = ? AND role = 'PROOFREADER' AND is_active = 1")
-      .get(opts.proofreaderId);
+      .prepare(
+        "SELECT id FROM users WHERE id = ? AND role = 'PROOFREADER' AND is_active = 1 AND company_id = ?",
+      )
+      .get(opts.proofreaderId, task.company_id);
     if (!proofreader)
-      throw new TaskServiceError("USER_NOT_FOUND", "目标校对人员不存在或不可用");
+      throw new TaskServiceError("USER_NOT_FOUND", "目标校对人员不存在、已停用或所属公司不匹配");
     proofreaderId = opts.proofreaderId;
     isProxy = true;
   }
@@ -413,10 +429,10 @@ export function startTask(
         .run(proofreaderId, startedAt, taskId);
 
       if (info.changes === 0) {
-        const task = getTask(db, taskId);
-        if (task.status === "IN_PROGRESS")
+        const current = getTask(db, taskId);
+        if (current.status === "IN_PROGRESS")
           throw new TaskServiceError("TASK_ALREADY_STARTED", "该任务已被领取");
-        if (task.status === "CANCELLED")
+        if (current.status === "CANCELLED")
           throw new TaskServiceError("INVALID_STATUS", "已取消任务不能开始");
         throw new TaskServiceError("INVALID_STATUS", "当前状态不允许开始（需先确认收稿）");
       }
@@ -428,16 +444,16 @@ export function startTask(
           operator.id,
           "PROXY_START",
           taskId,
-          opts.proxyReason as string,
-          null,
-          JSON.stringify({ proofreaderId }),
+          proxyReason,
+          JSON.stringify({ status: "READY_TO_START" }),
+          JSON.stringify({ status: "IN_PROGRESS", proofreaderId }),
           "PROOFREADER",
         );
       }
     })();
   } catch (e) {
     if (isUniqueViolation(e))
-      throw new TaskServiceError("PROOFREADER_BUSY", "该校对人员已有进行中任务");
+      throw new TaskServiceError("PROOFREADER_BUSY", "该校对人员已有进行中的任务，请先结束当前任务。");
     throw e;
   }
 }
@@ -596,6 +612,24 @@ export function listActiveEditors(db: Database.Database): EditorOption[] {
       "SELECT id, display_name, username FROM users WHERE role = 'RESPONSIBLE_EDITOR' AND is_active = 1 ORDER BY display_name, id",
     )
     .all() as EditorOption[];
+}
+
+export interface ProofreaderOption {
+  id: number;
+  display_name: string;
+  username: string;
+}
+
+// 列出某外校公司下启用且已完成首次改密的校对人员（供管理员代开始选择）。
+export function listActiveProofreaders(
+  db: Database.Database,
+  companyId: number,
+): ProofreaderOption[] {
+  return db
+    .prepare(
+      "SELECT id, display_name, username FROM users WHERE role = 'PROOFREADER' AND is_active = 1 AND company_id = ? ORDER BY display_name, id",
+    )
+    .all(companyId) as ProofreaderOption[];
 }
 
 // 按姓名或登录账号做部分匹配（不区分大小写），用于搜索型下拉框。

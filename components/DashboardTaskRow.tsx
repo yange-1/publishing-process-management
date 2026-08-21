@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   STAGE_LABELS,
   STATUS_LABELS,
@@ -6,23 +7,29 @@ import {
   type DashboardTask,
 } from "@/lib/dashboard-service";
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string | null): string {
+  if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 export default function DashboardTaskRow({
   task,
   now,
+  currentUserId,
+  action,
 }: {
   task: DashboardTask;
   now: Date;
+  currentUserId?: number;
+  action?: ReactNode;
 }) {
   const info = overdueInfo(task, now);
   const stageLabel = STAGE_LABELS[task.stage] ?? task.stage;
   const statusLabel = STATUS_LABELS[task.status] ?? task.status;
+  const isMine = currentUserId != null && task.proofreaderId === currentUserId;
 
   return (
     <li className="px-4 py-3">
@@ -41,6 +48,11 @@ export default function DashboardTaskRow({
             <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
               {statusLabel}
             </span>
+            {isMine && (
+              <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700">
+                我的当前任务
+              </span>
+            )}
             {info.isOverdue && (
               <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-xs font-semibold text-white">
                 已滞留
@@ -53,10 +65,19 @@ export default function DashboardTaskRow({
             {task.companyName ?? "—"} · 来稿 {fmtDate(task.publishedAt)} · 已等待{" "}
             {waitDays(task.publishedAt, now)} 天
           </div>
-          {task.status === "READY_TO_START" && (
+          {task.proofreaderName && (
+            <div className="mt-0.5 truncate text-xs text-gray-500">
+              校对人员：{task.proofreaderName} · 开始校对 {fmtDate(task.startedAt)}
+            </div>
+          )}
+          {task.status === "PENDING_CONFIRMATION" && (
+            <div className="mt-0.5 text-xs text-gray-400">等待外校主管确认收稿</div>
+          )}
+          {task.status === "READY_TO_START" && !action && (
             <div className="mt-0.5 text-xs text-gray-400">等待校对人员开始</div>
           )}
         </div>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
     </li>
   );

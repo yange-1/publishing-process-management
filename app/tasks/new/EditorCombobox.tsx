@@ -11,10 +11,14 @@ export default function EditorCombobox({
   editors,
   value,
   onChange,
+  placeholder = "搜索责任编辑姓名或登录账号",
+  emptyText = "没有匹配的责任编辑",
 }: {
   editors: EditorOption[];
   value: number | null;
   onChange: (id: number | null) => void;
+  placeholder?: string;
+  emptyText?: string;
 }) {
   const initialSelected = editors.find((e) => e.id === value) ?? null;
   const [query, setQuery] = useState(
@@ -102,7 +106,7 @@ export default function EditorCombobox({
           onFocus={openDropdown}
           onClick={openDropdown}
           onKeyDown={handleKeyDown}
-          placeholder="搜索责任编辑姓名或登录账号"
+          placeholder={placeholder}
           className="w-full rounded-md border border-gray-300 px-3 py-2 pr-16 text-sm"
         />
         <div className="absolute inset-y-0 right-0 flex items-center pr-1">
@@ -130,9 +134,7 @@ export default function EditorCombobox({
       {open && (
         <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
           {filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-gray-400">
-              没有匹配的责任编辑
-            </li>
+            <li className="px-3 py-2 text-sm text-gray-400">{emptyText}</li>
           ) : (
             filtered.map((editor, i) => (
               <li key={editor.id}>

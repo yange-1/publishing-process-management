@@ -11,8 +11,12 @@ export interface DashboardTask {
   editorName: string | null;
   publisherCompanyName: string | null;
   companyName: string | null;
+  companyId: number | null;
   publishedAt: string;
   status: string;
+  proofreaderId: number | null;
+  proofreaderName: string | null;
+  startedAt: string | null;
 }
 
 export const STAGE_LABELS: Record<string, string> = {
@@ -75,14 +79,18 @@ export function overdueInfo(task: DashboardTask, now: Date): OverdueInfo {
 const BASE_SELECT = `
   SELECT t.id, b.title, t.stage, t.star_level AS starLevel,
          t.published_at AS publishedAt, t.status,
+         t.proofreader_id AS proofreaderId, t.started_at AS startedAt,
          u.display_name AS editorName,
          cu.name AS publisherCompanyName,
-         c.name AS companyName
+         c.name AS companyName,
+         t.company_id AS companyId,
+         pu.display_name AS proofreaderName
   FROM tasks t
   JOIN books b ON b.id = t.book_id
   LEFT JOIN users u ON u.id = t.publisher_id
   LEFT JOIN companies cu ON cu.id = u.company_id
   LEFT JOIN companies c ON c.id = t.company_id
+  LEFT JOIN users pu ON pu.id = t.proofreader_id
 `;
 
 const ORDER_STAR_TIME = "ORDER BY t.star_level DESC, t.published_at ASC, t.id ASC";
