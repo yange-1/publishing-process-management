@@ -1,3 +1,4 @@
+import Link from "next/link";
 import OverdueRow from "@/components/OverdueRow";
 import ProductionRow from "@/components/ProductionRow";
 import WarehouseRow from "@/components/WarehouseRow";
@@ -68,6 +69,14 @@ export default async function Home() {
           出版校对流程管理平台
         </h1>
         <div className="flex items-center gap-3">
+          {user.role === "INTERNAL_ADMIN" && (
+            <Link
+              href="/admin/users"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              账号管理
+            </Link>
+          )}
           <button
             type="button"
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"

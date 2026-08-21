@@ -26,6 +26,12 @@ export class UserAdminServiceError extends Error {
   }
 }
 
+// 将任意错误转换为可安全展示给用户的中文提示，绝不泄露 SQLite 原始错误。
+export function userAdminErrorMessage(err: unknown): string {
+  if (err instanceof UserAdminServiceError) return err.message;
+  return "操作失败，请稍后重试";
+}
+
 // ===== 常量 =====
 
 // 普通账号管理服务只允许创建这三类业务账号，不允许创建新的 INTERNAL_ADMIN。
