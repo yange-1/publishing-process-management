@@ -8,6 +8,7 @@ export interface DashboardTask {
   bookId: number;
   title: string;
   stage: string;
+  workType: string;
   starLevel: number;
   editorName: string | null;
   publisherCompanyName: string | null;
@@ -28,6 +29,12 @@ export const STAGE_LABELS: Record<string, string> = {
   THIRD_PROOF: "三校",
   ADDITIONAL_PROOF: "加校",
   RED_CHECK: "核红",
+};
+
+export const WORK_TYPE_LABELS: Record<string, string> = {
+  PROOFREAD: "读校",
+  RED_CHECK: "核红",
+  PROOFREAD_AND_RED_CHECK: "读校且核红",
 };
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -79,7 +86,7 @@ export function overdueInfo(task: DashboardTask, now: Date): OverdueInfo {
 }
 
 const BASE_SELECT = `
-  SELECT t.id, b.id AS bookId, b.title, t.stage, t.star_level AS starLevel,
+  SELECT t.id, b.id AS bookId, b.title, t.stage, t.work_type AS workType, t.star_level AS starLevel,
          t.published_at AS publishedAt, t.status,
          t.proofreader_id AS proofreaderId, t.started_at AS startedAt,
          t.finished_at AS finishedAt,

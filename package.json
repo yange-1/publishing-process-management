@@ -21,7 +21,8 @@
     "test:start": "node --test test/task-start.test.ts",
     "test:finish": "node --test test/task-finish.test.ts",
     "test:history": "node --test test/history.test.ts",
-    "test:next": "node --test test/task-next-stage.test.ts"
+    "test:next": "node --test test/task-next-stage.test.ts",
+    "test:work": "node --test test/work-type.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

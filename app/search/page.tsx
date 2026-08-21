@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireCurrentUser } from "@/lib/session";
 import { openDatabase } from "@/lib/db";
 import { searchBooks } from "@/lib/search-service";
-import { STAGE_LABELS, STATUS_LABELS } from "@/lib/dashboard-service";
+import { STAGE_LABELS, STATUS_LABELS, WORK_TYPE_LABELS } from "@/lib/dashboard-service";
 import UserBar from "@/app/components/UserBar";
 import SearchBox from "@/components/SearchBox";
 
@@ -82,6 +82,9 @@ export default async function SearchPage({
                       </span>
                       <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
                         {r.stage ? STAGE_LABELS[r.stage] ?? r.stage : "—"}
+                      </span>
+                      <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                        {r.workType ? WORK_TYPE_LABELS[r.workType] ?? r.workType : "读校"}
                       </span>
                       <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
                         {r.status ? STATUS_LABELS[r.status] ?? r.status : "—"}

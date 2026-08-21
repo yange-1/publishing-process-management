@@ -27,6 +27,7 @@ const MIGRATIONS = [
     table: "tasks",
     columns: [
       { name: "company_id", definition: "INTEGER REFERENCES companies(id)" },
+      { name: "work_type", definition: "TEXT NOT NULL DEFAULT 'PROOFREAD'" },
     ],
   },
 ];

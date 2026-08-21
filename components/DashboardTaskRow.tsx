@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   STAGE_LABELS,
   STATUS_LABELS,
+  WORK_TYPE_LABELS,
   waitDays,
   overdueInfo,
   type DashboardTask,
@@ -29,6 +30,7 @@ export default function DashboardTaskRow({
 }) {
   const info = overdueInfo(task, now);
   const stageLabel = STAGE_LABELS[task.stage] ?? task.stage;
+  const workTypeLabel = WORK_TYPE_LABELS[task.workType] ?? "读校";
   const statusLabel = STATUS_LABELS[task.status] ?? task.status;
   const isMine = currentUserId != null && task.proofreaderId === currentUserId;
 
@@ -45,6 +47,9 @@ export default function DashboardTaskRow({
             </span>
             <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
               {stageLabel}
+            </span>
+            <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+              {workTypeLabel}
             </span>
             <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
               {statusLabel}

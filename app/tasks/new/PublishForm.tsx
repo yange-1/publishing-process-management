@@ -10,7 +10,7 @@ import type {
   BookNextStageInfo,
   EditorOption,
 } from "@/lib/task-service";
-import { STAGE_LABELS } from "@/lib/dashboard-service";
+import { STAGE_LABELS, WORK_TYPE_LABELS } from "@/lib/dashboard-service";
 
 const STAGE_OPTIONS = [
   { value: "INITIAL_REVIEW", label: "初审" },
@@ -18,7 +18,12 @@ const STAGE_OPTIONS = [
   { value: "SECOND_PROOF", label: "二校" },
   { value: "THIRD_PROOF", label: "三校" },
   { value: "ADDITIONAL_PROOF", label: "加校" },
+];
+
+const WORK_TYPE_OPTIONS = [
+  { value: "PROOFREAD", label: "读校" },
   { value: "RED_CHECK", label: "核红" },
+  { value: "PROOFREAD_AND_RED_CHECK", label: "读校且核红" },
 ];
 
 const STAR_OPTIONS = [
@@ -52,6 +57,7 @@ export default function PublishForm({
   const [title, setTitle] = useState("");
   const [bookId, setBookId] = useState<number | null>(null);
   const [stage, setStage] = useState("INITIAL_REVIEW");
+  const [workType, setWorkType] = useState("PROOFREAD");
   const [starLevel, setStarLevel] = useState(1);
   const [companyId, setCompanyId] = useState<string>(() =>
     externalCompanies.length === 1 ? String(externalCompanies[0].id) : "",
@@ -92,6 +98,7 @@ export default function PublishForm({
     setBookId(null);
     setNote("");
     setStage("INITIAL_REVIEW");
+    setWorkType("PROOFREAD");
     setStarLevel(1);
     setCompanyId(externalCompanies.length === 1 ? String(externalCompanies[0].id) : "");
     setEditorId(editors.length === 1 ? editors[0].id : null);
@@ -136,6 +143,7 @@ export default function PublishForm({
       bookTitle: bookMode === "new" ? title : undefined,
       stage: bookMode === "existing" ? selectedBook?.nextStage ?? "" : stage,
       starLevel,
+      workType,
       companyId: Number(companyId),
       note: note.trim() || undefined,
       editorId: isAdmin && bookMode === "new" ? Number(editorId) : undefined,
@@ -163,6 +171,10 @@ export default function PublishForm({
             <div>
               <dt className="text-gray-500">校次</dt>
               <dd className="text-gray-900">{STAGE_LABELS[result.stage] ?? result.stage}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">工作内容</dt>
+              <dd className="text-gray-900">{WORK_TYPE_LABELS[result.workType] ?? "读校"}</dd>
             </div>
             <div>
               <dt className="text-gray-500">星级</dt>
@@ -297,6 +309,24 @@ export default function PublishForm({
               </option>
             ))}
           </select>
+        </div>
+      </section>
+
+      {/* 本次工作内容 */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <label className="mb-2 block text-sm text-gray-600">本次工作内容</label>
+        <div className="flex gap-4">
+          {WORK_TYPE_OPTIONS.map((o) => (
+            <label key={o.value} className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="workType"
+                checked={workType === o.value}
+                onChange={() => setWorkType(o.value)}
+              />
+              {o.label}
+            </label>
+          ))}
         </div>
       </section>
 

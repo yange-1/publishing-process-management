@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS tasks (
                         'INITIAL_REVIEW', 'FIRST_PROOF', 'SECOND_PROOF',
                         'THIRD_PROOF', 'ADDITIONAL_PROOF', 'RED_CHECK'
                       )),
+  -- 本次工作内容：读校 / 核红 / 读校且核红
+  work_type           TEXT    NOT NULL DEFAULT 'PROOFREAD' CHECK (work_type IN (
+                        'PROOFREAD', 'RED_CHECK', 'PROOFREAD_AND_RED_CHECK'
+                      )),
   -- 星级：1=普通 2=加急 3=重要急稿
   star_level          INTEGER NOT NULL CHECK (star_level BETWEEN 1 AND 3),
   status              TEXT    NOT NULL DEFAULT 'PENDING_CONFIRMATION' CHECK (status IN (

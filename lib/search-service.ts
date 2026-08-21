@@ -38,6 +38,7 @@ export interface SearchResultItem {
   editorName: string | null;
   publisherCompanyName: string | null;
   stage: string | null;
+  workType: string | null;
   starLevel: number | null;
   status: string | null;
   companyName: string | null;
@@ -74,7 +75,7 @@ export function searchBooks(
       `SELECT b.id AS bookId, b.title,
               ed.display_name AS editorName,
               ced.name AS publisherCompanyName,
-              t.id AS taskId, t.stage, t.star_level AS starLevel, t.status,
+              t.id AS taskId, t.stage, t.work_type AS workType, t.star_level AS starLevel, t.status,
               t.published_at AS publishedAt, t.confirmed_at AS confirmedAt,
               t.started_at AS startedAt, t.finished_at AS finishedAt,
               c.name AS companyName,
@@ -97,6 +98,7 @@ export function searchBooks(
 export interface BookTaskInfo {
   taskId: number;
   stage: string;
+  workType: string;
   starLevel: number;
   status: string;
   publisherName: string | null;
@@ -157,7 +159,7 @@ export function getBookDetail(db: Database.Database, bookId: number): BookDetail
 
   const tasks = db
     .prepare(
-      `SELECT t.id AS taskId, t.stage, t.star_level AS starLevel, t.status, t.note,
+      `SELECT t.id AS taskId, t.stage, t.work_type AS workType, t.star_level AS starLevel, t.status, t.note,
               t.published_at AS publishedAt, t.confirmed_at AS confirmedAt,
               t.started_at AS startedAt, t.finished_at AS finishedAt,
               t.cancelled_at AS cancelledAt,

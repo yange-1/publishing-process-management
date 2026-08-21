@@ -270,10 +270,12 @@ test("17. 管理员缺少代发布原因时拒绝", () => {
   db.close();
 });
 
-test("18. 达到最高校次后拒绝", () => {
+test("18. 完成三校后可以继续发起加校", () => {
   const db = freshDb();
-  const { bookId } = toCompleted(db, { title: "书", stage: "RED_CHECK" });
-  assertThrowsCode(() => publishNext(db, bookId), "MAX_STAGE_REACHED");
+  const { bookId } = toCompleted(db, { title: "书", stage: "THIRD_PROOF" });
+  const newTaskId = publishNext(db, bookId);
+  const t = db.prepare("SELECT stage FROM tasks WHERE id = ?").get(newTaskId) as { stage: string };
+  assert.strictEqual(t.stage, "ADDITIONAL_PROOF");
   db.close();
 });
 

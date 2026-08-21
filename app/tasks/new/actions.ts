@@ -10,6 +10,7 @@ export type PublishActionResult =
       taskId: number;
       title: string;
       stage: string;
+      workType: string;
       starLevel: number;
       editorName: string;
       companyName: string | null;
@@ -34,6 +35,7 @@ export async function publishTaskAction(input: {
   bookTitle?: string;
   stage: string;
   starLevel: number;
+  workType?: string;
   companyId: number;
   note?: string;
   editorId?: number;
@@ -54,6 +56,7 @@ export async function publishTaskAction(input: {
       bookTitle: input.bookMode === "new" ? input.bookTitle : undefined,
       stage: input.stage,
       starLevel: input.starLevel,
+      workType: input.workType,
       note: input.note,
       companyId: input.companyId,
       editorId: input.editorId,
@@ -62,7 +65,7 @@ export async function publishTaskAction(input: {
 
     const row = db
       .prepare(
-        `SELECT t.id, b.title, t.stage, t.star_level, t.published_at,
+        `SELECT t.id, b.title, t.stage, t.work_type, t.star_level, t.published_at,
                 u.display_name AS editorName, c.name AS companyName
          FROM tasks t
          JOIN books b ON b.id = t.book_id
@@ -74,6 +77,7 @@ export async function publishTaskAction(input: {
         id: number;
         title: string;
         stage: string;
+        work_type: string;
         star_level: number;
         published_at: string;
         editorName: string | null;
@@ -85,6 +89,7 @@ export async function publishTaskAction(input: {
       taskId: row.id,
       title: row.title,
       stage: row.stage,
+      workType: row.work_type,
       starLevel: row.star_level,
       editorName: row.editorName ?? "",
       companyName: row.companyName,

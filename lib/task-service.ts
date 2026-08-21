@@ -43,13 +43,18 @@ export const STAGES = [
   "SECOND_PROOF",
   "THIRD_PROOF",
   "ADDITIONAL_PROOF",
-  "RED_CHECK",
 ] as const;
 
-// 校次顺序中的下一校次；已是最高校次（核红）时返回 null。
+// 本次工作内容：读校 / 核红 / 读校且核红
+export const WORK_TYPES = ["PROOFREAD", "RED_CHECK", "PROOFREAD_AND_RED_CHECK"] as const;
+export type WorkType = (typeof WORK_TYPES)[number];
+export const DEFAULT_WORK_TYPE: WorkType = "PROOFREAD";
+
+// 校次顺序中的下一校次；加校完成后可继续发起加校。
 export function nextStage(stage: string): string | null {
   const idx = (STAGES as readonly string[]).indexOf(stage);
-  if (idx < 0 || idx === STAGES.length - 1) return null;
+  if (idx < 0) return null;
+  if (idx === STAGES.length - 1) return stage; // 加校可重复
   return STAGES[idx + 1];
 }
 
@@ -111,6 +116,14 @@ function assertStar(star: number): void {
   if (!Number.isInteger(star) || star < 1 || star > 3) {
     throw new TaskServiceError("INVALID_STAGE_OR_STAR", "无效星级（应为 1-3）");
   }
+}
+
+function assertWorkType(workType: string | undefined): WorkType {
+  const wt = workType ?? DEFAULT_WORK_TYPE;
+  if (!(WORK_TYPES as readonly string[]).includes(wt)) {
+    throw new TaskServiceError("INVALID_INPUT", "无效的工作内容");
+  }
+  return wt as WorkType;
 }
 
 function insertEvent(
@@ -177,6 +190,7 @@ export interface PublishParams {
   identifier?: string;
   stage: string;
   starLevel: number;
+  workType?: string; // 本次工作内容：读校/核红/读校且核红
   note?: string;
   companyId?: number; // 接收外校公司
   editorId?: number; // 代发时指定目标责任编辑
@@ -189,6 +203,8 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
     throw new TaskServiceError("FORBIDDEN", "无权限：仅责任编辑或超级管理员可发布");
   }
   assertStar(params.starLevel);
+
+  const workType = assertWorkType(params.workType);
 
   // 备注：可选，最多 200 字
   const note = (params.note ?? "").trim();
@@ -269,11 +285,12 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
 
     const taskResult = db
       .prepare(
-        "INSERT INTO tasks(book_id, stage, star_level, status, note, publisher_id, published_at, company_id) VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO tasks(book_id, stage, work_type, star_level, status, note, publisher_id, published_at, company_id) VALUES (?,?,?,?,?,?,?,?,?)",
       )
       .run(
         bookId,
         stage,
+        workType,
         params.starLevel,
         "PENDING_CONFIRMATION",
         note || null,
@@ -292,7 +309,7 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
         taskId,
         proxyReason,
         null,
-        JSON.stringify({ bookId, stage, starLevel: params.starLevel, editorId, companyId: params.companyId ?? null }),
+        JSON.stringify({ bookId, stage, workType, starLevel: params.starLevel, editorId, companyId: params.companyId ?? null }),
         "RESPONSIBLE_EDITOR",
       );
     }
@@ -718,9 +735,8 @@ function resolveNextStage(db: Database.Database, bookId: number): string {
     throw new TaskServiceError("BOOK_HAS_ACTIVE_TASK", "该书稿已有待处理的下一校次任务，请勿重复发布。");
   if (!state.latestCompletedStage)
     throw new TaskServiceError("NO_COMPLETED_STAGE", "该书稿没有已完成的校次");
-  if (state.nextStage == null)
-    throw new TaskServiceError("MAX_STAGE_REACHED", "已达到最高校次，无法继续发起下一校次");
-  return state.nextStage;
+  // 加校完成后可继续发起加校；旧数据若为已废弃校次则兜底沿用原校次
+  return state.nextStage ?? state.latestCompletedStage;
 }
 
 // 列出可继续发起下一校次的书稿（至少一个已完成、无进行中任务、未到最高校次）。

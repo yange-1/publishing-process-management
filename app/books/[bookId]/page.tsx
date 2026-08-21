@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireCurrentUser } from "@/lib/session";
 import { openDatabase } from "@/lib/db";
 import { getBookDetail, EVENT_LABELS, ROLE_LABELS } from "@/lib/search-service";
-import { STAGE_LABELS, STATUS_LABELS } from "@/lib/dashboard-service";
+import { STAGE_LABELS, STATUS_LABELS, WORK_TYPE_LABELS } from "@/lib/dashboard-service";
 import UserBar from "@/app/components/UserBar";
 
 function fmt(iso: string | null): string {
@@ -122,6 +122,9 @@ export default async function BookDetailPage({
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-amber-500">{"★".repeat(t.starLevel)}</span>
                   <span className="font-medium text-gray-900">{STAGE_LABELS[t.stage] ?? t.stage}</span>
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                    {WORK_TYPE_LABELS[t.workType] ?? "读校"}
+                  </span>
                   <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
                     {STATUS_LABELS[t.status] ?? t.status}
                   </span>
