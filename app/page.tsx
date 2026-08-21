@@ -17,6 +17,7 @@ import UserBar from "@/app/components/UserBar";
 import DashboardTaskRow from "@/components/DashboardTaskRow";
 import DashboardOverdueRow from "@/components/DashboardOverdueRow";
 import StartActions from "@/components/StartActions";
+import FinishActions from "@/components/FinishActions";
 
 type StatTone = "slate" | "amber" | "blue" | "red" | "emerald";
 
@@ -187,9 +188,29 @@ export default async function Home() {
               </div>
             ) : (
               <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-                {production.map((task) => (
-                  <DashboardTaskRow key={task.id} task={task} now={now} currentUserId={user.id} />
-                ))}
+                {production.map((task) => {
+                  const isMine =
+                    user.role === "PROOFREADER" && task.proofreaderId === user.id;
+                  const isAdmin = user.role === "INTERNAL_ADMIN";
+                  const action =
+                    isMine || isAdmin ? (
+                      <FinishActions
+                        taskId={task.id}
+                        taskProofreaderId={task.proofreaderId}
+                        currentRole={user.role}
+                        currentUserId={user.id}
+                      />
+                    ) : undefined;
+                  return (
+                    <DashboardTaskRow
+                      key={task.id}
+                      task={task}
+                      now={now}
+                      currentUserId={user.id}
+                      action={action}
+                    />
+                  );
+                })}
               </ul>
             )}
           </section>

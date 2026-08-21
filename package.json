@@ -18,7 +18,8 @@
     "test:publish": "node --test test/task-publish.test.ts",
     "test:receipt": "node --test test/task-receipt.test.ts",
     "test:dashboard": "node --test test/dashboard.test.ts",
-    "test:start": "node --test test/task-start.test.ts"
+    "test:start": "node --test test/task-start.test.ts",
+    "test:finish": "node --test test/task-finish.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

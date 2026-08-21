@@ -17,6 +17,7 @@ export interface DashboardTask {
   proofreaderId: number | null;
   proofreaderName: string | null;
   startedAt: string | null;
+  finishedAt: string | null;
 }
 
 export const STAGE_LABELS: Record<string, string> = {
@@ -80,6 +81,7 @@ const BASE_SELECT = `
   SELECT t.id, b.title, t.stage, t.star_level AS starLevel,
          t.published_at AS publishedAt, t.status,
          t.proofreader_id AS proofreaderId, t.started_at AS startedAt,
+         t.finished_at AS finishedAt,
          u.display_name AS editorName,
          cu.name AS publisherCompanyName,
          c.name AS companyName,

@@ -68,6 +68,7 @@ export default function DashboardTaskRow({
           {task.proofreaderName && (
             <div className="mt-0.5 truncate text-xs text-gray-500">
               校对人员：{task.proofreaderName} · 开始校对 {fmtDate(task.startedAt)}
+              {task.finishedAt && <> · 完成 {fmtDate(task.finishedAt)}</>}
             </div>
           )}
           {task.status === "PENDING_CONFIRMATION" && (

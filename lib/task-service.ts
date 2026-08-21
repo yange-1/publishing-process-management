@@ -477,19 +477,24 @@ export function finishTask(
 
   const task = getTask(db, taskId);
 
+  // 状态校验（幂等：已完成直接返回，不改变数据）
+  if (task.status === "COMPLETED") return;
+  if (task.status !== "IN_PROGRESS")
+    throw new TaskServiceError("INVALID_STATUS", "当前状态不允许结束");
+
   let isProxy = false;
+  let proxyReason = "";
   if (operator.role === "PROOFREADER") {
     if (task.proofreader_id !== operator.id)
       throw new TaskServiceError("NOT_TASK_PROOFREADER", "只有当前校对人员可结束该任务");
   } else {
-    if (!opts.proxyReason)
+    proxyReason = (opts.proxyReason ?? "").trim();
+    if (!proxyReason)
       throw new TaskServiceError("PROXY_REASON_REQUIRED", "代操作需填写原因");
+    if (proxyReason.length > 200)
+      throw new TaskServiceError("INVALID_INPUT", "代操作原因最多 200 字");
     isProxy = true;
   }
-
-  if (task.status === "COMPLETED") return; // 幂等
-  if (task.status !== "IN_PROGRESS")
-    throw new TaskServiceError("INVALID_STATUS", "当前状态不允许结束");
 
   const finishedAt = now();
 
@@ -513,8 +518,8 @@ export function finishTask(
         operator.id,
         "PROXY_FINISH",
         taskId,
-        opts.proxyReason as string,
-        JSON.stringify({ proofreader_id: task.proofreader_id }),
+        proxyReason,
+        JSON.stringify({ status: "IN_PROGRESS", proofreader_id: task.proofreader_id }),
         JSON.stringify({ status: "COMPLETED" }),
         "PROOFREADER",
       );
