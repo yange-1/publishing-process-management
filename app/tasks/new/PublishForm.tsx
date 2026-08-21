@@ -4,11 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { publishTaskAction, type PublishActionResult } from "./actions";
 import EditorCombobox from "./EditorCombobox";
+import BookCombobox from "./BookCombobox";
 import type {
   ExternalCompanyOption,
-  BookOption,
+  BookNextStageInfo,
   EditorOption,
 } from "@/lib/task-service";
+import { STAGE_LABELS } from "@/lib/dashboard-service";
 
 const STAGE_OPTIONS = [
   { value: "INITIAL_REVIEW", label: "初审" },
@@ -25,12 +27,12 @@ const STAR_OPTIONS = [
   { value: 3, label: "三星 · 重点/评奖/紧急" },
 ];
 
-const STAGE_LABELS = Object.fromEntries(STAGE_OPTIONS.map((o) => [o.value, o.label]));
 const STAR_LABELS = Object.fromEntries(STAR_OPTIONS.map((o) => [o.value, o.label]));
 
-function fmt(iso: string): string {
+function fmt(iso: string | null): string {
+  if (!iso) return "—";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
+  if (Number.isNaN(d.getTime())) return "—";
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
@@ -43,12 +45,12 @@ export default function PublishForm({
 }: {
   isAdmin: boolean;
   externalCompanies: ExternalCompanyOption[];
-  books: BookOption[];
+  books: BookNextStageInfo[];
   editors: EditorOption[];
 }) {
   const [bookMode, setBookMode] = useState<"new" | "existing">("new");
   const [title, setTitle] = useState("");
-  const [bookId, setBookId] = useState("");
+  const [bookId, setBookId] = useState<number | null>(null);
   const [stage, setStage] = useState("INITIAL_REVIEW");
   const [starLevel, setStarLevel] = useState(1);
   const [companyId, setCompanyId] = useState<string>(() =>
@@ -65,14 +67,29 @@ export default function PublishForm({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Extract<PublishActionResult, { ok: true }> | null>(null);
 
-  const selectedBook = bookId ? books.find((b) => b.id === Number(bookId)) : undefined;
+  const selectedBook = bookId != null ? books.find((b) => b.bookId === bookId) : undefined;
+  const eligibleBooks =
+    isAdmin && bookMode === "existing" && editorId != null
+      ? books.filter((b) => b.editorId === editorId)
+      : books;
+
+  function handleBookSelect(id: number | null) {
+    setBookId(id);
+    if (id != null) {
+      const b = books.find((x) => x.bookId === id);
+      if (b) {
+        if (b.latestStarLevel != null) setStarLevel(b.latestStarLevel);
+        if (b.companyId != null) setCompanyId(String(b.companyId));
+      }
+    }
+  }
 
   function resetForm() {
     setResult(null);
     setError(null);
     setBookMode("new");
     setTitle("");
-    setBookId("");
+    setBookId(null);
     setNote("");
     setStage("INITIAL_REVIEW");
     setStarLevel(1);
@@ -91,8 +108,8 @@ export default function PublishForm({
       setError("请填写书名");
       return;
     }
-    if (bookMode === "existing" && !bookId) {
-      setError("请选择书稿");
+    if (bookMode === "existing" && bookId == null) {
+      setError("请选择已有书稿");
       return;
     }
     if (!companyId) {
@@ -103,6 +120,10 @@ export default function PublishForm({
       setError("请从列表中选择一名有效的责任编辑");
       return;
     }
+    if (isAdmin && bookMode === "existing" && editorId == null) {
+      setError("请选择目标责任编辑");
+      return;
+    }
     if (isAdmin && !proxyReason.trim()) {
       setError("请填写代发布原因");
       return;
@@ -111,9 +132,9 @@ export default function PublishForm({
     setSubmitting(true);
     const res = await publishTaskAction({
       bookMode,
-      bookId: bookMode === "existing" ? Number(bookId) : undefined,
+      bookId: bookMode === "existing" ? bookId ?? undefined : undefined,
       bookTitle: bookMode === "new" ? title : undefined,
-      stage,
+      stage: bookMode === "existing" ? selectedBook?.nextStage ?? "" : stage,
       starLevel,
       companyId: Number(companyId),
       note: note.trim() || undefined,
@@ -218,24 +239,18 @@ export default function PublishForm({
           <div className="space-y-2">
             <div>
               <label className="mb-1 block text-sm text-gray-600">选择已有书稿</label>
-              <select
-                value={bookId}
-                onChange={(e) => setBookId(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">请选择书稿</option>
-                {books.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.title}
-                  </option>
-                ))}
-              </select>
+              <BookCombobox books={eligibleBooks} value={bookId} onChange={handleBookSelect} />
             </div>
             {selectedBook && (
               <div className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
                 书名：{selectedBook.title}
                 <span className="mx-2">·</span>
                 责任编辑：{selectedBook.editorName ?? "—"}
+                <span className="mx-2">·</span>
+                上一校次：
+                {selectedBook.latestCompletedStage
+                  ? STAGE_LABELS[selectedBook.latestCompletedStage] ?? selectedBook.latestCompletedStage
+                  : "—"}
               </div>
             )}
           </div>
@@ -244,20 +259,31 @@ export default function PublishForm({
 
       {/* 校次与星级 */}
       <section className="grid grid-cols-1 gap-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-sm text-gray-600">校次</label>
-          <select
-            value={stage}
-            onChange={(e) => setStage(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-          >
-            {STAGE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {bookMode === "new" ? (
+          <div>
+            <label className="mb-1 block text-sm text-gray-600">校次</label>
+            <select
+              value={stage}
+              onChange={(e) => setStage(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            >
+              {STAGE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <span className="mb-1 block text-sm text-gray-600">下一校次（系统自动确定）</span>
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              {selectedBook?.nextStage
+                ? STAGE_LABELS[selectedBook.nextStage] ?? selectedBook.nextStage
+                : "请先选择书稿"}
+            </div>
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-sm text-gray-600">重要程度</label>
           <select
@@ -327,10 +353,13 @@ export default function PublishForm({
             </div>
           ) : (
             <div>
-              <span className="mb-1 block text-sm text-gray-600">责任编辑（由书稿自动确定）</span>
-              <div className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
-                {selectedBook?.editorName ?? "请先选择书稿"}
-              </div>
+              <label className="mb-1 block text-sm text-gray-600">目标责任编辑（用于筛选其书稿）</label>
+              <EditorCombobox
+                key={editorKey}
+                editors={editors}
+                value={editorId}
+                onChange={setEditorId}
+              />
             </div>
           )}
           <div>

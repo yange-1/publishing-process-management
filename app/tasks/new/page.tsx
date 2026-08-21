@@ -4,7 +4,7 @@ import { requireCurrentUser } from "@/lib/session";
 import { openDatabase } from "@/lib/db";
 import {
   listActiveExternalCompanies,
-  listBooks,
+  listEligibleBooks,
   listActiveEditors,
   isAdminRole,
 } from "@/lib/task-service";
@@ -23,7 +23,7 @@ export default async function NewTaskPage() {
   let editors;
   try {
     externalCompanies = listActiveExternalCompanies(db);
-    books = listBooks(db, user.role === "RESPONSIBLE_EDITOR" ? user.id : undefined);
+    books = listEligibleBooks(db, user.role === "RESPONSIBLE_EDITOR" ? user.id : undefined);
     editors = listActiveEditors(db);
   } finally {
     db.close();

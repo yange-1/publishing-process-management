@@ -169,6 +169,7 @@ test("8. 新书稿正确创建books和tasks", () => {
 test("9. 已有书稿继续发起任务时复用book_id", () => {
   const db = freshDb();
   const first = publishTask(db, { operatorId: 1, bookTitle: "测试图书E", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
+  db.prepare("UPDATE tasks SET status = 'COMPLETED' WHERE id = ?").run(first);
   const bookId = (db.prepare("SELECT book_id FROM tasks WHERE id = ?").get(first) as { book_id: number }).book_id;
   const booksBefore = rows(db, "books");
   const second = publishTask(db, { operatorId: 1, bookId, stage: "FIRST_PROOF", starLevel: 1, companyId: 2 });
@@ -315,6 +316,7 @@ test("21. 管理员发布新书稿缺少目标责任编辑时失败", () => {
 test("22. 管理员已有书稿模式使用书稿原责任编辑", () => {
   const db = freshDb();
   const first = publishTask(db, { operatorId: 1, bookTitle: "编辑甲的书", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
+  db.prepare("UPDATE tasks SET status = 'COMPLETED' WHERE id = ?").run(first);
   const bookId = (db.prepare("SELECT book_id FROM tasks WHERE id = ?").get(first) as { book_id: number }).book_id;
   const second = publishTask(db, { operatorId: 5, proxyReason: "编辑甲请假代发", bookId, stage: "FIRST_PROOF", starLevel: 1, companyId: 2 });
   const t = db.prepare("SELECT publisher_id FROM tasks WHERE id = ?").get(second) as { publisher_id: number };
@@ -325,6 +327,7 @@ test("22. 管理员已有书稿模式使用书稿原责任编辑", () => {
 test("23. 管理员不能改变已有书稿的责任编辑", () => {
   const db = freshDb();
   const first = publishTask(db, { operatorId: 1, bookTitle: "编辑甲的书", stage: "INITIAL_REVIEW", starLevel: 1, companyId: 2 });
+  db.prepare("UPDATE tasks SET status = 'COMPLETED' WHERE id = ?").run(first);
   const bookId = (db.prepare("SELECT book_id FROM tasks WHERE id = ?").get(first) as { book_id: number }).book_id;
   const second = publishTask(db, { operatorId: 5, proxyReason: "代发", bookId, stage: "FIRST_PROOF", starLevel: 1, companyId: 2, editorId: 2 });
   const t = db.prepare("SELECT publisher_id FROM tasks WHERE id = ?").get(second) as { publisher_id: number };

@@ -148,6 +148,7 @@ test("7. 参数化查询不因特殊字符报错或产生异常结果", () => {
 test("8. 一条书稿对应多条任务时，搜索结果不重复书稿", () => {
   const db = freshDb();
   const first = publish(db, { title: "多校次书" });
+  db.prepare("UPDATE tasks SET status = 'COMPLETED' WHERE id = ?").run(first);
   const bookId = bookIdOf(db, first);
   publishTask(db, { operatorId: 1, bookId, stage: "FIRST_PROOF", starLevel: 1, companyId: 2 });
   const r = searchBooks(db, "多校次书", 1, 20);
@@ -158,8 +159,8 @@ test("8. 一条书稿对应多条任务时，搜索结果不重复书稿", () =>
 test("9. 最近任务状态展示正确", () => {
   const db = freshDb();
   const first = publish(db, { title: "多校次书" });
+  db.prepare("UPDATE tasks SET status = 'COMPLETED' WHERE id = ?").run(first);
   const bookId = bookIdOf(db, first);
-  confirmReceipt(db, first, 2);
   // 第二个任务（一校），仍是 PENDING
   publishTask(db, { operatorId: 1, bookId, stage: "FIRST_PROOF", starLevel: 1, companyId: 2 });
   const r = searchBooks(db, "多校次书", 1, 20);
@@ -231,6 +232,7 @@ test("15. 详情页书稿基本信息正确", () => {
 test("16. 多校次任务排序正确（按发布时间从早到晚）", () => {
   const db = freshDb();
   const first = publish(db, { title: "多校次", stage: "INITIAL_REVIEW" });
+  db.prepare("UPDATE tasks SET status = 'COMPLETED' WHERE id = ?").run(first);
   const bookId = bookIdOf(db, first);
   publishTask(db, { operatorId: 1, bookId, stage: "FIRST_PROOF", starLevel: 1, companyId: 2 });
   const d = getBookDetail(db, bookId);

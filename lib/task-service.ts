@@ -15,7 +15,10 @@ export type TaskErrorCode =
   | "PROXY_REASON_REQUIRED"
   | "INVALID_STAGE_OR_STAR"
   | "INVALID_INPUT"
-  | "INVALID_COMPANY";
+  | "INVALID_COMPANY"
+  | "BOOK_HAS_ACTIVE_TASK"
+  | "NO_COMPLETED_STAGE"
+  | "MAX_STAGE_REACHED";
 
 export class TaskServiceError extends Error {
   readonly code: TaskErrorCode;
@@ -42,6 +45,13 @@ export const STAGES = [
   "ADDITIONAL_PROOF",
   "RED_CHECK",
 ] as const;
+
+// 校次顺序中的下一校次；已是最高校次（核红）时返回 null。
+export function nextStage(stage: string): string | null {
+  const idx = (STAGES as readonly string[]).indexOf(stage);
+  if (idx < 0 || idx === STAGES.length - 1) return null;
+  return STAGES[idx + 1];
+}
 
 const EVENT_PUBLISHED = "TASK_PUBLISHED";
 const EVENT_CONFIRMED = "RECEIPT_CONFIRMED";
@@ -178,7 +188,6 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
   if (operator.role !== "RESPONSIBLE_EDITOR" && operator.role !== "INTERNAL_ADMIN") {
     throw new TaskServiceError("FORBIDDEN", "无权限：仅责任编辑或超级管理员可发布");
   }
-  assertStage(params.stage);
   assertStar(params.starLevel);
 
   // 备注：可选，最多 200 字
@@ -236,13 +245,16 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
 
   return db.transaction(() => {
     let bookId = params.bookId;
+    let stage: string;
     if (!bookId) {
+      assertStage(params.stage);
       const title = (params.bookTitle ?? "").trim();
       if (!title) throw new TaskServiceError("INVALID_INPUT", "书名不能为空");
       const bookResult = db
         .prepare("INSERT INTO books(title, editor_id, identifier) VALUES (?,?,?)")
         .run(title, editorId, params.identifier ?? null);
       bookId = Number(bookResult.lastInsertRowid);
+      stage = params.stage;
     } else {
       const book = db
         .prepare("SELECT id, editor_id FROM books WHERE id = ?")
@@ -251,6 +263,8 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
       // 普通责任编辑只能继续发起属于自己的书稿
       if (!isProxy && book.editor_id !== editorId)
         throw new TaskServiceError("FORBIDDEN", "无权使用该书稿");
+      // 下一校次由系统自动计算，不接受浏览器传入的校次
+      stage = resolveNextStage(db, bookId);
     }
 
     const taskResult = db
@@ -259,7 +273,7 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
       )
       .run(
         bookId,
-        params.stage,
+        stage,
         params.starLevel,
         "PENDING_CONFIRMATION",
         note || null,
@@ -278,7 +292,7 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
         taskId,
         proxyReason,
         null,
-        JSON.stringify({ bookId, stage: params.stage, starLevel: params.starLevel, editorId, companyId: params.companyId ?? null }),
+        JSON.stringify({ bookId, stage, starLevel: params.starLevel, editorId, companyId: params.companyId ?? null }),
         "RESPONSIBLE_EDITOR",
       );
     }
@@ -635,6 +649,105 @@ export function listActiveProofreaders(
       "SELECT id, display_name, username FROM users WHERE role = 'PROOFREADER' AND is_active = 1 AND company_id = ? ORDER BY display_name, id",
     )
     .all(companyId) as ProofreaderOption[];
+}
+
+// ===== 下一校次 =====
+
+export interface BookNextStageInfo {
+  bookId: number;
+  title: string;
+  editorId: number | null;
+  editorName: string | null;
+  latestCompletedStage: string | null;
+  nextStage: string | null;
+  latestCompletedAt: string | null;
+  companyId: number | null;
+  companyName: string | null;
+  latestStarLevel: number | null;
+  hasActiveTask: boolean;
+}
+
+function getBookStageState(
+  db: Database.Database,
+  bookId: number,
+): {
+  latestCompletedStage: string | null;
+  nextStage: string | null;
+  latestCompletedAt: string | null;
+  companyId: number | null;
+  companyName: string | null;
+  latestStarLevel: number | null;
+  hasActiveTask: boolean;
+} {
+  const latestCompleted = db
+    .prepare(
+      "SELECT stage, finished_at, star_level, company_id FROM tasks WHERE book_id = ? AND status = 'COMPLETED' ORDER BY id DESC LIMIT 1",
+    )
+    .get(bookId) as
+    | { stage: string; finished_at: string | null; star_level: number; company_id: number | null }
+    | undefined;
+  const hasActiveTask =
+    (
+      db
+        .prepare(
+          "SELECT COUNT(*) c FROM tasks WHERE book_id = ? AND status IN ('PENDING_CONFIRMATION','READY_TO_START','IN_PROGRESS')",
+        )
+        .get(bookId) as { c: number }
+    ).c > 0;
+  const companyName =
+    latestCompleted?.company_id != null
+      ? ((db.prepare("SELECT name FROM companies WHERE id = ?").get(latestCompleted.company_id) as
+          | { name: string }
+          | undefined)?.name ?? null)
+      : null;
+  return {
+    latestCompletedStage: latestCompleted?.stage ?? null,
+    nextStage: latestCompleted ? nextStage(latestCompleted.stage) : null,
+    latestCompletedAt: latestCompleted?.finished_at ?? null,
+    companyId: latestCompleted?.company_id ?? null,
+    companyName,
+    latestStarLevel: latestCompleted?.star_level ?? null,
+    hasActiveTask,
+  };
+}
+
+// 计算下一校次；书稿不符合继续发起条件时抛业务错误。
+function resolveNextStage(db: Database.Database, bookId: number): string {
+  const state = getBookStageState(db, bookId);
+  if (state.hasActiveTask)
+    throw new TaskServiceError("BOOK_HAS_ACTIVE_TASK", "该书稿已有待处理的下一校次任务，请勿重复发布。");
+  if (!state.latestCompletedStage)
+    throw new TaskServiceError("NO_COMPLETED_STAGE", "该书稿没有已完成的校次");
+  if (state.nextStage == null)
+    throw new TaskServiceError("MAX_STAGE_REACHED", "已达到最高校次，无法继续发起下一校次");
+  return state.nextStage;
+}
+
+// 列出可继续发起下一校次的书稿（至少一个已完成、无进行中任务、未到最高校次）。
+export function listEligibleBooks(
+  db: Database.Database,
+  editorId?: number,
+): BookNextStageInfo[] {
+  const books = db
+    .prepare(
+      `SELECT b.id AS bookId, b.title, b.editor_id AS editorId, ed.display_name AS editorName
+       FROM books b
+       LEFT JOIN users ed ON ed.id = b.editor_id
+       ${editorId != null ? "WHERE b.editor_id = ?" : ""}
+       ORDER BY b.title, b.id`,
+    )
+    .all(...(editorId != null ? [editorId] : [])) as {
+    bookId: number;
+    title: string;
+    editorId: number | null;
+    editorName: string | null;
+  }[];
+
+  return books
+    .map((b) => ({ ...b, ...getBookStageState(db, b.bookId) }))
+    .filter(
+      (r) => r.latestCompletedStage != null && !r.hasActiveTask && r.nextStage != null,
+    );
 }
 
 // 按姓名或登录账号做部分匹配（不区分大小写），用于搜索型下拉框。
