@@ -18,6 +18,22 @@ const SCHEMA = fs.readFileSync(
   "utf-8",
 );
 
+const FORMAL_TABLES = ["companies", "users", "books", "tasks", "task_events", "audit_log"];
+const FORMAL_PATH = path.join(process.cwd(), "data", "publishing-process.db");
+
+function formalCounts(): Record<string, number> {
+  const r: Record<string, number> = {};
+  if (!fs.existsSync(FORMAL_PATH)) return r;
+  const db = new Database(FORMAL_PATH, { readonly: true });
+  for (const t of FORMAL_TABLES) {
+    r[t] = (db.prepare(`SELECT COUNT(*) c FROM ${t}`).get() as { c: number }).c;
+  }
+  db.close();
+  return r;
+}
+
+const FORMAL_BASELINE = formalCounts();
+
 function freshDb(): Database.Database {
   const db = new Database(":memory:");
   db.pragma("foreign_keys = ON");
@@ -298,14 +314,7 @@ test("17. 所有操作人和时间均由系统生成", () => {
   db.close();
 });
 
-test("18. 正式数据库六张表仍为空", () => {
-  const formalPath = path.join(process.cwd(), "data", "publishing-process.db");
-  if (!fs.existsSync(formalPath)) return; // 未初始化时跳过
-  const db = new Database(formalPath, { readonly: true });
-  const tables = ["companies", "users", "books", "tasks", "task_events", "audit_log"];
-  for (const t of tables) {
-    const c = (db.prepare(`SELECT COUNT(*) c FROM ${t}`).get() as { c: number }).c;
-    assert.strictEqual(c, 0, `${t} 应保持为空`);
-  }
-  db.close();
+test("18. 正式数据库未被测试污染", () => {
+  if (!fs.existsSync(FORMAL_PATH)) return; // 未初始化时跳过
+  assert.deepStrictEqual(formalCounts(), FORMAL_BASELINE);
 });
