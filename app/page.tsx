@@ -18,6 +18,7 @@ import DashboardTaskRow from "@/components/DashboardTaskRow";
 import DashboardOverdueRow from "@/components/DashboardOverdueRow";
 import StartActions from "@/components/StartActions";
 import FinishActions from "@/components/FinishActions";
+import SearchBox from "@/components/SearchBox";
 
 type StatTone = "slate" | "amber" | "blue" | "red" | "emerald";
 
@@ -115,6 +116,11 @@ export default async function Home() {
           <UserBar name={user.display_name} role={user.role} />
         </div>
       </header>
+
+      <section className="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <SearchBox />
+        <p className="mt-2 text-xs text-gray-500">可搜索书名或责任编辑姓名，查看书稿校对历史</p>
+      </section>
 
       <section className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="部门现有书稿" value={activeBooks} tone="slate" />

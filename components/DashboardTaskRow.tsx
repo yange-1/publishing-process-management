@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import {
   STAGE_LABELS,
   STATUS_LABELS,
@@ -78,7 +79,15 @@ export default function DashboardTaskRow({
             <div className="mt-0.5 text-xs text-gray-400">等待校对人员开始</div>
           )}
         </div>
-        {action && <div className="shrink-0">{action}</div>}
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href={`/books/${task.bookId}`}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+          >
+            查看历史
+          </Link>
+          {action}
+        </div>
       </div>
     </li>
   );

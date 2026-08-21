@@ -19,7 +19,8 @@
     "test:receipt": "node --test test/task-receipt.test.ts",
     "test:dashboard": "node --test test/dashboard.test.ts",
     "test:start": "node --test test/task-start.test.ts",
-    "test:finish": "node --test test/task-finish.test.ts"
+    "test:finish": "node --test test/task-finish.test.ts",
+    "test:history": "node --test test/history.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

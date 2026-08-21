@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 
 export interface DashboardTask {
   id: number;
+  bookId: number;
   title: string;
   stage: string;
   starLevel: number;
@@ -78,7 +79,7 @@ export function overdueInfo(task: DashboardTask, now: Date): OverdueInfo {
 }
 
 const BASE_SELECT = `
-  SELECT t.id, b.title, t.stage, t.star_level AS starLevel,
+  SELECT t.id, b.id AS bookId, b.title, t.stage, t.star_level AS starLevel,
          t.published_at AS publishedAt, t.status,
          t.proofreader_id AS proofreaderId, t.started_at AS startedAt,
          t.finished_at AS finishedAt,
