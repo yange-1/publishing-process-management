@@ -50,7 +50,7 @@ export const STATUS_LABELS: Record<string, string> = {
 export function locationLabel(status: string): string {
   if (status === "IN_PROGRESS") return "生产线";
   if (status === "READY_TO_START") return "仓库";
-  return "待确认";
+  return "待确认收稿";
 }
 
 // 已等待天数：自 published_at 起算，使用服务器当前时间，不写回数据库。
@@ -106,11 +106,12 @@ const BASE_SELECT = `
 
 const ORDER_STAR_TIME = "ORDER BY t.star_level DESC, t.published_at ASC, t.id ASC";
 
-// 书稿仓库：已发布但尚未进入生产线的任务（待确认收稿 + 待开始）。
+// 书稿仓库：仅“待开始”（外校主管已确认收稿、等待校对人员开始）。
+// 待确认收稿（PENDING_CONFIRMATION）单独进入“待确认收稿”专页，不进入仓库。
 export function listWarehouse(db: Database.Database): DashboardTask[] {
   return db
     .prepare(
-      `${BASE_SELECT} WHERE t.status IN ('PENDING_CONFIRMATION','READY_TO_START') ${ORDER_STAR_TIME}`,
+      `${BASE_SELECT} WHERE t.status = 'READY_TO_START' ${ORDER_STAR_TIME}`,
     )
     .all() as DashboardTask[];
 }
@@ -122,11 +123,60 @@ export function listProduction(db: Database.Database): DashboardTask[] {
     .all() as DashboardTask[];
 }
 
+// 责任编辑：本人书稿的进行中任务。
+export function listProductionByEditor(
+  db: Database.Database,
+  editorId: number,
+): DashboardTask[] {
+  return db
+    .prepare(`${BASE_SELECT} WHERE t.status = 'IN_PROGRESS' AND b.editor_id = ? ${ORDER_STAR_TIME}`)
+    .all(editorId) as DashboardTask[];
+}
+
 // 已完成。
 export function listCompleted(db: Database.Database): DashboardTask[] {
   return db
     .prepare(`${BASE_SELECT} WHERE t.status = 'COMPLETED' ORDER BY t.published_at DESC, t.id DESC`)
     .all() as DashboardTask[];
+}
+
+// 责任编辑：本人书稿的已完成任务（按完成时间倒序）。
+export function listCompletedByEditor(
+  db: Database.Database,
+  editorId: number,
+): DashboardTask[] {
+  return db
+    .prepare(`${BASE_SELECT} WHERE t.status = 'COMPLETED' AND b.editor_id = ? ORDER BY t.finished_at DESC, t.id DESC`)
+    .all(editorId) as DashboardTask[];
+}
+
+export interface CompletedPage {
+  items: DashboardTask[];
+  total: number;
+}
+
+// 已完成分页查询：按完成时间从新到旧；companyId 提供时只返回该公司（外校主管）。
+export function listCompletedPage(
+  db: Database.Database,
+  companyId: number | null,
+  page: number,
+  pageSize: number,
+): CompletedPage {
+  const conditions = ["t.status = 'COMPLETED'"];
+  const params: (number | string)[] = [];
+  if (companyId != null) {
+    conditions.push("t.company_id = ?");
+    params.push(companyId);
+  }
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const total = (
+    db.prepare(`SELECT COUNT(*) c FROM tasks t ${where}`).get(...params) as { c: number }
+  ).c;
+  const offset = (page - 1) * pageSize;
+  const items = db
+    .prepare(`${BASE_SELECT} ${where} ORDER BY t.finished_at DESC, t.id DESC LIMIT ? OFFSET ?`)
+    .all(...params, pageSize, offset) as DashboardTask[];
+  return { items, total };
 }
 
 export interface OverdueItem extends DashboardTask {
@@ -179,14 +229,44 @@ export function countActiveBooks(db: Database.Database): number {
   ).c;
 }
 
-export function countWarehouse(db: Database.Database): number {
+// 责任编辑：本人书稿中处于活动状态（待确认/待开始/进行中）的去重书稿数量。
+export function countActiveBooksByEditor(
+  db: Database.Database,
+  editorId: number,
+): number {
   return (
     db
       .prepare(
-        "SELECT COUNT(*) c FROM tasks WHERE status IN ('PENDING_CONFIRMATION','READY_TO_START')",
+        "SELECT COUNT(DISTINCT t.book_id) c FROM tasks t JOIN books b ON b.id = t.book_id WHERE t.status IN ('PENDING_CONFIRMATION','READY_TO_START','IN_PROGRESS') AND b.editor_id = ?",
       )
-      .get() as { c: number }
+      .get(editorId) as { c: number }
   ).c;
+}
+
+export interface CompanyWarehouseCount {
+  companyId: number | null;
+  companyName: string | null;
+  count: number;
+}
+
+// 各外校公司的书稿仓库（READY_TO_START）数量，用于责任编辑判断承载情况。
+export function countWarehouseByCompany(
+  db: Database.Database,
+): CompanyWarehouseCount[] {
+  return db
+    .prepare(
+      `SELECT t.company_id AS companyId, c.name AS companyName, COUNT(*) AS count
+       FROM tasks t
+       LEFT JOIN companies c ON c.id = t.company_id
+       WHERE t.status = 'READY_TO_START'
+       GROUP BY t.company_id
+       ORDER BY c.name, t.company_id`,
+    )
+    .all() as CompanyWarehouseCount[];
+}
+
+export function countWarehouse(db: Database.Database): number {
+  return (db.prepare("SELECT COUNT(*) c FROM tasks WHERE status = 'READY_TO_START'").get() as { c: number }).c;
 }
 
 export function countProduction(db: Database.Database): number {

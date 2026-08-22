@@ -41,6 +41,7 @@ export interface SearchResultItem {
   workType: string | null;
   starLevel: number | null;
   status: string | null;
+  companyId: number | null;
   companyName: string | null;
   publishedAt: string | null;
   confirmedAt: string | null;
@@ -76,6 +77,7 @@ export function searchBooks(
               ed.display_name AS editorName,
               ced.name AS publisherCompanyName,
               t.id AS taskId, t.stage, t.work_type AS workType, t.star_level AS starLevel, t.status,
+              t.company_id AS companyId,
               t.published_at AS publishedAt, t.confirmed_at AS confirmedAt,
               t.started_at AS startedAt, t.finished_at AS finishedAt,
               c.name AS companyName,
@@ -93,6 +95,45 @@ export function searchBooks(
     .all(pattern, pattern, pageSize, offset) as SearchResultItem[];
 
   return { results, total, page, pageSize };
+}
+
+// 校对人员在搜索结果中能否“开始校对”的纯 UI 判断（不涉及业务写入；实际开始仍由 startTask 校验）。
+export interface SearchStartDecision {
+  showStart: boolean; // 显示“开始校对”按钮
+  showBusyHint: boolean; // 显示“你已有正在校对的任务”提示
+}
+
+export function proofreaderStartDecision(
+  role: string,
+  status: string | null,
+  taskCompanyId: number | null,
+  proofreaderCompanyId: number | null,
+  hasInProgress: boolean,
+): SearchStartDecision {
+  const eligible =
+    role === "PROOFREADER" &&
+    status === "READY_TO_START" &&
+    taskCompanyId != null &&
+    taskCompanyId === proofreaderCompanyId;
+  if (!eligible) return { showStart: false, showBusyHint: false };
+  if (hasInProgress) return { showStart: false, showBusyHint: true };
+  return { showStart: true, showBusyHint: false };
+}
+
+// 校对人员当前是否已有进行中的任务（服务端查询，不信任浏览器）。
+export function hasInProgressTask(
+  db: Database.Database,
+  proofreaderId: number,
+): boolean {
+  return (
+    (
+      db
+        .prepare(
+          "SELECT COUNT(*) c FROM tasks WHERE proofreader_id = ? AND status = 'IN_PROGRESS'",
+        )
+        .get(proofreaderId) as { c: number }
+    ).c > 0
+  );
 }
 
 export interface BookTaskInfo {

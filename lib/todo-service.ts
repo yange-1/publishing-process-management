@@ -49,11 +49,8 @@ function matchesRole(task: DashboardTask, user: TodoUser): boolean {
       // 外校主管的“我的待办”只含待确认收稿；确认后即进入书稿仓库，不再是其待办。
       return task.companyId === user.companyId && task.status === "PENDING_CONFIRMATION";
     case "PROOFREADER":
-      return (
-        (task.companyId === user.companyId && task.status === "READY_TO_START") ||
-        (task.proofreaderId === user.id &&
-          (task.status === "IN_PROGRESS" || task.status === "COMPLETED"))
-      );
+      // 校对人员待办只含本人当前进行中的任务（最多 1 条），不显示仓库待开始任务或最近完成。
+      return task.proofreaderId === user.id && task.status === "IN_PROGRESS";
     default:
       return false;
   }

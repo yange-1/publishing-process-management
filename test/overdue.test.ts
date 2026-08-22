@@ -229,12 +229,18 @@ test("15. 预警总数不受20条展示上限影响", () => {
   db.close();
 });
 
-test("16. 滞留任务仍保留在正常仓库列表", () => {
+test("16. 待确认滞留进预警但不在仓库；待开始滞留仍在仓库", () => {
   const db = freshDb();
-  const id = publish(db);
-  age(db, id, 91);
-  assert.ok(listOverdue(db, NOW).some((x) => x.id === id));
-  assert.ok(listWarehouse(db).some((x) => x.id === id)); // 仍在仓库
+  const pendingId = publish(db);
+  age(db, pendingId, 91);
+  assert.ok(listOverdue(db, NOW).some((x) => x.id === pendingId));
+  assert.ok(!listWarehouse(db).some((x) => x.id === pendingId)); // 待确认不在仓库
+
+  const readyId = publish(db);
+  confirmReceipt(db, readyId, 2);
+  age(db, readyId, 91);
+  assert.ok(listOverdue(db, NOW).some((x) => x.id === readyId));
+  assert.ok(listWarehouse(db).some((x) => x.id === readyId)); // 待开始仍在仓库
   db.close();
 });
 

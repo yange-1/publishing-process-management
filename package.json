@@ -11,6 +11,7 @@
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:backup": "node scripts/db-backup.mjs",
     "db:restore-check": "node scripts/db-restore-check.mjs",
+    "db:acceptance": "node scripts/db-acceptance.ts",
     "admin:create": "node scripts/admin-create.mjs",
     "auth:secret": "node scripts/auth-secret.mjs",
     "test:tasks": "node --test test/tasks.test.ts",
@@ -29,7 +30,10 @@
     "test:cancel": "node --test test/cancel.test.ts",
     "test:todo": "node --test test/todo.test.ts",
     "test:todo-confirm": "node --test test/todo-confirm.test.ts",
-    "test:filter": "node --test test/task-filter.test.ts"
+    "test:filter": "node --test test/task-filter.test.ts",
+    "test:search-start": "node --test test/search-start.test.ts",
+    "test:supervisor-home": "node --test test/supervisor-home.test.ts",
+    "test:editor-home": "node --test test/editor-home.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

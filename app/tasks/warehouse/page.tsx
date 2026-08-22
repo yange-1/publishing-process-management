@@ -2,22 +2,34 @@ import Link from "next/link";
 import { requireCurrentUser } from "@/lib/session";
 import { openDatabase } from "@/lib/db";
 import { listWarehouse } from "@/lib/dashboard-service";
-import { listActiveProofreaders, type ProofreaderOption } from "@/lib/task-service";
+import { listActiveProofreaders, listActiveExternalCompanies, type ProofreaderOption } from "@/lib/task-service";
 import UserBar from "@/app/components/UserBar";
 import DashboardTaskRow from "@/components/DashboardTaskRow";
 import StartActions from "@/components/StartActions";
 import CancelActions from "@/components/CancelActions";
 
-export default async function WarehousePage() {
+export default async function WarehousePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   // 开放查看：所有已登录、已启用、已完成首次改密的账号均可查看完整仓库。
   const user = await requireCurrentUser();
+  const sp = await searchParams;
+  const companyParam = typeof sp.company === "string" ? sp.company : "";
+  const companyFilter =
+    companyParam && Number.parseInt(companyParam, 10) > 0
+      ? Number.parseInt(companyParam, 10)
+      : null;
   const now = new Date();
 
   const db = openDatabase();
   let warehouse;
+  let externalCompanies;
   const proofreadersByCompany = new Map<number, ProofreaderOption[]>();
   try {
     warehouse = listWarehouse(db);
+    externalCompanies = listActiveExternalCompanies(db);
     if (user.role === "INTERNAL_ADMIN") {
       for (const task of warehouse) {
         if (
@@ -32,6 +44,11 @@ export default async function WarehousePage() {
   } finally {
     db.close();
   }
+
+  const displayedWarehouse =
+    companyFilter != null
+      ? warehouse.filter((t) => t.companyId === companyFilter)
+      : warehouse;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-6">
@@ -48,13 +65,42 @@ export default async function WarehousePage() {
         <UserBar name={user.display_name} role={user.role} />
       </header>
 
-      {warehouse.length === 0 ? (
+      <form method="get" action="/tasks/warehouse" className="mb-4 flex items-center gap-2">
+        <select
+          name="company"
+          defaultValue={companyFilter ?? ""}
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700"
+        >
+          <option value="">全部外校公司</option>
+          {externalCompanies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          筛选
+        </button>
+        {companyFilter != null && (
+          <Link
+            href="/tasks/warehouse"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            清除
+          </Link>
+        )}
+      </form>
+
+      {displayedWarehouse.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-12 text-center text-sm text-gray-400">
-          当前没有待确认收稿或待开始的任务
+          当前没有待开始的任务
         </div>
       ) : (
         <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-          {warehouse.map((task) => {
+          {displayedWarehouse.map((task) => {
             const isMine =
               user.role === "PROOFREADER" && task.companyId === user.company_id;
             const isAdmin = user.role === "INTERNAL_ADMIN";
@@ -62,7 +108,7 @@ export default async function WarehousePage() {
             const canCancel =
               (isAdmin ||
                 (user.role === "RESPONSIBLE_EDITOR" && task.editorId === user.id)) &&
-              (task.status === "PENDING_CONFIRMATION" || task.status === "READY_TO_START");
+              task.status === "READY_TO_START";
             const action =
               canStart || canCancel ? (
                 <div className="flex flex-col items-end gap-2">

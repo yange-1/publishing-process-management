@@ -160,7 +160,9 @@ export default function TodoList({
 
       {summary.items.length === 0 && (
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-12 text-center text-sm text-gray-400">
-          当前没有需要处理的待办
+          {currentRole === "PROOFREADER"
+            ? "当前没有进行中的校对任务"
+            : "当前没有需要处理的待办"}
         </div>
       )}
     </div>

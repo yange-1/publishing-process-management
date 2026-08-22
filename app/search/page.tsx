@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { requireCurrentUser } from "@/lib/session";
 import { openDatabase } from "@/lib/db";
-import { searchBooks } from "@/lib/search-service";
+import { searchBooks, proofreaderStartDecision, hasInProgressTask } from "@/lib/search-service";
 import { STAGE_LABELS, STATUS_LABELS, WORK_TYPE_LABELS } from "@/lib/dashboard-service";
 import UserBar from "@/app/components/UserBar";
 import SearchBox from "@/components/SearchBox";
+import SearchStartActions from "@/components/SearchStartActions";
 
 const PAGE_SIZE = 20;
 const MAX_QUERY_LENGTH = 100;
@@ -29,10 +30,12 @@ export default async function SearchPage({
   const page = Math.max(1, Number.parseInt(typeof sp.page === "string" ? sp.page : "1", 10) || 1);
 
   let result = { results: [] as Awaited<ReturnType<typeof searchBooks>>["results"], total: 0, page, pageSize: PAGE_SIZE };
+  let hasInProgress = false;
   if (q) {
     const db = openDatabase();
     try {
       result = searchBooks(db, q, page, PAGE_SIZE);
+      hasInProgress = user.role === "PROOFREADER" ? hasInProgressTask(db, user.id) : false;
     } finally {
       db.close();
     }
@@ -96,12 +99,34 @@ export default async function SearchPage({
                       开始 {fmt(r.startedAt)} · 完成 {fmt(r.finishedAt)} · 校对人员：{r.proofreaderName ?? "—"}
                     </div>
                   </div>
-                  <Link
-                    href={`/books/${r.bookId}`}
-                    className="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-                  >
-                    查看校对历史
-                  </Link>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {(() => {
+                      const d = proofreaderStartDecision(
+                        user.role,
+                        r.status,
+                        r.companyId,
+                        user.company_id ?? null,
+                        hasInProgress,
+                      );
+                      if (d.showStart && r.taskId != null) {
+                        return <SearchStartActions taskId={r.taskId} />;
+                      }
+                      if (d.showBusyHint) {
+                        return (
+                          <span className="text-xs text-amber-600">
+                            你已有正在校对的任务，请先完成当前任务
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
+                    <Link
+                      href={`/books/${r.bookId}`}
+                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                    >
+                      查看校对历史
+                    </Link>
+                  </div>
                 </div>
               </li>
             ))}

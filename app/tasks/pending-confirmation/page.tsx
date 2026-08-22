@@ -36,6 +36,7 @@ export default async function PendingConfirmationPage() {
         items={items}
         currentRole={user.role}
         currentCompanyId={user.company_id ?? null}
+        currentUserId={user.id}
       />
     </main>
   );

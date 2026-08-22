@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { confirmReceiptAction } from "./actions";
+import CancelActions from "@/components/CancelActions";
 import type { PendingConfirmationItem } from "@/lib/task-service";
 
 const STAGE_LABELS: Record<string, string> = {
@@ -33,10 +34,12 @@ export default function PendingList({
   items,
   currentRole,
   currentCompanyId,
+  currentUserId,
 }: {
   items: PendingConfirmationItem[];
   currentRole: string;
   currentCompanyId: number | null;
+  currentUserId: number;
 }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<number | null>(null);
@@ -98,6 +101,10 @@ export default function PendingList({
               isSupervisor && item.companyId === currentCompanyId;
             const canProxy = isAdmin;
             const actionable = canConfirm || canProxy;
+            const canCancel =
+              isAdmin ||
+              (currentRole === "RESPONSIBLE_EDITOR" &&
+                item.editorId === currentUserId);
             return (
               <li key={item.id} className="px-4 py-3">
                 <div className="flex items-center gap-3">
@@ -123,7 +130,7 @@ export default function PendingList({
                       已等待 {waitDays(item.publishedAt)} 天
                     </div>
                   </div>
-                  <div className="shrink-0">
+                  <div className="flex shrink-0 items-center gap-2">
                     {actionable ? (
                       pendingId === item.id ? (
                         <span className="inline-block rounded-md bg-gray-100 px-3 py-2 text-sm text-gray-400">
@@ -146,7 +153,15 @@ export default function PendingList({
                           代确认
                         </button>
                       )
-                    ) : (
+                    ) : null}
+                    {canCancel && (
+                      <CancelActions
+                        task={item}
+                        currentRole={currentRole}
+                        currentUserId={currentUserId}
+                      />
+                    )}
+                    {!actionable && !canCancel && (
                       <span className="text-xs text-gray-400">—</span>
                     )}
                   </div>

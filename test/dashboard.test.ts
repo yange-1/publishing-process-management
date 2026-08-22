@@ -9,6 +9,7 @@ import {
   startTask,
   finishTask,
   cancelTask,
+  listPendingConfirmation,
 } from "../lib/task-service.ts";
 import {
   listWarehouse,
@@ -98,10 +99,11 @@ function agePublished(db: Database.Database, taskId: number, daysAgo: number): v
   db.prepare("UPDATE tasks SET published_at = ? WHERE id = ?").run(past, taskId);
 }
 
-test("1. PENDING_CONFIRMATION出现在仓库", () => {
+test("1. PENDING_CONFIRMATION 不出现在仓库（只进入待确认专页）", () => {
   const db = freshDb();
   const id = publish(db, { title: "待确认" });
-  assert.deepStrictEqual(listWarehouse(db).map((t) => t.id), [id]);
+  assert.strictEqual(listWarehouse(db).length, 0);
+  assert.deepStrictEqual(listPendingConfirmation(db).map((t) => t.id), [id]);
   db.close();
 });
 
@@ -115,7 +117,7 @@ test("2. READY_TO_START出现在仓库", () => {
 test("3. 确认后任务进入仓库（READY_TO_START）", () => {
   const db = freshDb();
   const id = publish(db);
-  assert.deepStrictEqual(listWarehouse(db).map((t) => t.id), [id]);
+  assert.strictEqual(listWarehouse(db).length, 0); // 待确认不在仓库
   confirmReceipt(db, id, 2);
   const w = listWarehouse(db);
   assert.deepStrictEqual(w.map((t) => t.id), [id]);
@@ -161,12 +163,12 @@ test("7. 部门现有书稿数量正确", () => {
   db.close();
 });
 
-test("8. 仓库数量正确", () => {
+test("8. 仓库数量正确（仅 READY_TO_START）", () => {
   const db = freshDb();
-  publish(db, { title: "A" });
-  toReady(db, { title: "B" });
+  publish(db, { title: "A" }); // 待确认，不计入仓库
+  toReady(db, { title: "B" }); // 待开始，计入仓库
   toInProgress(db, { title: "C" });
-  assert.strictEqual(countWarehouse(db), 2);
+  assert.strictEqual(countWarehouse(db), 1);
   db.close();
 });
 
@@ -188,9 +190,9 @@ test("10. 已完成数量正确", () => {
 
 test("11. 仓库按星级和发布时间排序", () => {
   const db = freshDb();
-  const a = publish(db, { title: "一星", starLevel: 1 });
-  const b = publish(db, { title: "三星", starLevel: 3 });
-  const c = publish(db, { title: "二星", starLevel: 2 });
+  const a = toReady(db, { title: "一星", starLevel: 1 });
+  const b = toReady(db, { title: "三星", starLevel: 3 });
+  const c = toReady(db, { title: "二星", starLevel: 2 });
   assert.deepStrictEqual(listWarehouse(db).map((t) => t.id), [b, c, a]);
   // 同星级内按发布时间从早到晚
   db.prepare("UPDATE tasks SET star_level = 1 WHERE id IN (?, ?)").run(b, c);
@@ -203,23 +205,23 @@ test("11. 仓库按星级和发布时间排序", () => {
 
 test("12. 仓库列表返回全部任务（页面最多显示20条）", () => {
   const db = freshDb();
-  for (let i = 0; i < 21; i++) publish(db, { title: `书${i}` });
+  for (let i = 0; i < 21; i++) toReady(db, { title: `书${i}` });
   assert.strictEqual(listWarehouse(db).length, 21);
   db.close();
 });
 
 test("13. 超过20条时仓库完整列表仍返回全部", () => {
   const db = freshDb();
-  for (let i = 0; i < 22; i++) publish(db, { title: `书${i}` });
+  for (let i = 0; i < 22; i++) toReady(db, { title: `书${i}` });
   assert.strictEqual(listWarehouse(db).length, 22);
   db.close();
 });
 
 test("14. 仓库完整查询返回全部任务", () => {
   const db = freshDb();
-  publish(db, { title: "A" });
+  publish(db, { title: "A" }); // 待确认，不在仓库
   toReady(db, { title: "B" });
-  assert.strictEqual(listWarehouse(db).length, 2);
+  assert.strictEqual(listWarehouse(db).length, 1);
   db.close();
 });
 
@@ -287,4 +289,10 @@ test("24. 未登录用户仍受登录保护", () => {
 test("25. 自动测试不污染正式数据库", () => {
   if (!fs.existsSync(FORMAL_PATH)) return;
   assert.deepStrictEqual(formalCounts(), FORMAL_BASELINE);
+});
+
+test("26. 首页待确认收稿入口仅对校对人员隐藏", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), "app", "page.tsx"), "utf-8");
+  assert.ok(src.includes('href="/tasks/pending-confirmation"'));
+  assert.ok(src.includes('user.role !== "PROOFREADER"'));
 });

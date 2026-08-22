@@ -7,17 +7,28 @@ import {
   STAGE_LABELS,
   STATUS_LABELS,
   WORK_TYPE_LABELS,
-  type DashboardTask,
 } from "@/lib/dashboard-service";
 
 type Message = { kind: "ok" | "err"; text: string } | null;
+
+// 取消组件所需的最小任务字段（同时被 DashboardTask 与待确认列表项满足）。
+export type CancelableTask = {
+  id: number;
+  title: string;
+  stage: string;
+  workType: string;
+  status: string;
+  editorId: number | null;
+  editorName: string | null;
+  companyName: string | null;
+};
 
 export default function CancelActions({
   task,
   currentRole,
   currentUserId,
 }: {
-  task: DashboardTask;
+  task: CancelableTask;
   currentRole: string;
   currentUserId: number;
 }) {

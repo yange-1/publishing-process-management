@@ -817,9 +817,12 @@ export function isAdminRole(role: string): boolean {
 
 export interface PendingConfirmationItem {
   id: number;
+  bookId: number;
   title: string;
   stage: string;
+  workType: string;
   starLevel: number;
+  editorId: number | null;
   editorName: string | null;
   publisherCompanyName: string | null;
   companyName: string | null;
@@ -833,7 +836,8 @@ export function listPendingConfirmation(
 ): PendingConfirmationItem[] {
   return db
     .prepare(
-      `SELECT t.id, b.title, t.stage, t.star_level AS starLevel,
+      `SELECT t.id, b.id AS bookId, b.title, t.stage, t.work_type AS workType, t.star_level AS starLevel,
+              b.editor_id AS editorId,
               t.published_at AS publishedAt, t.status, t.company_id AS companyId,
               u.display_name AS editorName,
               cu.name AS publisherCompanyName,

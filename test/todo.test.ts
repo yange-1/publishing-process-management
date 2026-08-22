@@ -134,13 +134,13 @@ test("3. 进行中任务为 in_progress 分组", () => {
   db.close();
 });
 
-test("4. 已完成任务为 completed 分组，不计入 activeCount", () => {
+test("4. 校对人员待办不显示最近完成（只显示本人进行中）", () => {
   const db = freshDb();
-  toCompleted(db, { title: "已完成" });
+  toCompleted(db, { title: "已完成" }); // 校对甲本人完成，不应出现
   const s = listMyTodos(db, U.pf1);
-  assert.strictEqual(s.items[0].group, "completed");
+  assert.strictEqual(s.items.length, 0);
   assert.strictEqual(s.activeCount, 0);
-  assert.strictEqual(s.completedCount, 1);
+  assert.strictEqual(s.completedCount, 0);
   db.close();
 });
 
@@ -183,18 +183,15 @@ test("8. 外校主管只看到本公司任务", () => {
   db.close();
 });
 
-test("9. 校对人员只看到本公司待开始 + 本人进行中/已完成", () => {
+test("9. 校对人员只看到本人进行中任务", () => {
   const db = freshDb();
-  const ready = toReady(db, { title: "本司待开始" }); // 外校A
-  const mine = toCompleted(db, { title: "本人完成" }, 3); // 校对甲本人
+  toCompleted(db, { title: "本人完成" }, 3); // 校对甲本人完成，不应出现
+  toReady(db, { title: "本司待开始" }); // 仓库待开始，不应出现
   toInProgress(db, { title: "他人进行中" }, 5); // 校对乙进行中，不应出现
-  toReady(db, { title: "外校B待开始", companyId: 3 }); // 外校B，不应出现
-
+  const mine = toInProgress(db, { title: "本人进行中" }, 3); // 校对甲本人进行中，应出现
   const s = listMyTodos(db, U.pf1);
-  assert.deepStrictEqual(
-    s.items.map((i) => i.id).sort((a, b) => a - b),
-    [ready, mine].sort((a, b) => a - b),
-  );
+  assert.deepStrictEqual(s.items.map((i) => i.id), [mine]);
+  assert.strictEqual(s.activeCount, 1);
   db.close();
 });
 
@@ -221,21 +218,13 @@ test("11. 外校主管待确认任务的行动提示为请确认收稿", () => {
   db.close();
 });
 
-test("12. 校对人员待开始任务提示可开始/被占用", () => {
+test("12. 校对人员进行中任务提示为我的当前任务", () => {
   const db = freshDb();
-  const ready = toReady(db, { title: "待开始" });
-  let s = listMyTodos(db, U.pf1);
-  assert.strictEqual(
-    s.items.find((i) => i.id === ready)?.actionHint,
-    "可开始校对",
-  );
-
-  toInProgress(db, { title: "占用" }, 3); // 校对甲已有进行中任务
-  s = listMyTodos(db, U.pf1);
-  assert.strictEqual(
-    s.items.find((i) => i.id === ready)?.actionHint,
-    "你已有正在校对的任务，请先完成当前任务",
-  );
+  toReady(db, { title: "待开始" }); // 仓库任务，不在待办
+  const mine = toInProgress(db, { title: "本人进行中" }, 3);
+  const s = listMyTodos(db, U.pf1);
+  assert.deepStrictEqual(s.items.map((i) => i.id), [mine]);
+  assert.strictEqual(s.items[0].actionHint, "我的当前任务");
   db.close();
 });
 
