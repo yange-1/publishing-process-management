@@ -6,6 +6,7 @@ import { listActiveProofreaders, type ProofreaderOption } from "@/lib/task-servi
 import UserBar from "@/app/components/UserBar";
 import DashboardTaskRow from "@/components/DashboardTaskRow";
 import StartActions from "@/components/StartActions";
+import CancelActions from "@/components/CancelActions";
 
 export default async function WarehousePage() {
   // 开放查看：所有已登录、已启用、已完成首次改密的账号均可查看完整仓库。
@@ -57,20 +58,36 @@ export default async function WarehousePage() {
             const isMine =
               user.role === "PROOFREADER" && task.companyId === user.company_id;
             const isAdmin = user.role === "INTERNAL_ADMIN";
-            const canAct = (isMine || isAdmin) && task.status === "READY_TO_START";
-            const action = canAct ? (
-              <StartActions
-                taskId={task.id}
-                taskCompanyId={task.companyId}
-                currentRole={user.role}
-                currentCompanyId={user.company_id ?? null}
-                proofreaders={
-                  isAdmin && task.companyId != null
-                    ? proofreadersByCompany.get(task.companyId) ?? []
-                    : []
-                }
-              />
-            ) : undefined;
+            const canStart = (isMine || isAdmin) && task.status === "READY_TO_START";
+            const canCancel =
+              (isAdmin ||
+                (user.role === "RESPONSIBLE_EDITOR" && task.editorId === user.id)) &&
+              (task.status === "PENDING_CONFIRMATION" || task.status === "READY_TO_START");
+            const action =
+              canStart || canCancel ? (
+                <div className="flex flex-col items-end gap-2">
+                  {canStart && (
+                    <StartActions
+                      taskId={task.id}
+                      taskCompanyId={task.companyId}
+                      currentRole={user.role}
+                      currentCompanyId={user.company_id ?? null}
+                      proofreaders={
+                        isAdmin && task.companyId != null
+                          ? proofreadersByCompany.get(task.companyId) ?? []
+                          : []
+                      }
+                    />
+                  )}
+                  {canCancel && (
+                    <CancelActions
+                      task={task}
+                      currentRole={user.role}
+                      currentUserId={user.id}
+                    />
+                  )}
+                </div>
+              ) : undefined;
             return (
               <DashboardTaskRow
                 key={task.id}

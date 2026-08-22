@@ -567,23 +567,41 @@ export function cancelTask(
   reason: string,
 ): void {
   const operator = getActiveUser(db, operatorId);
-  if (operator.role !== "INTERNAL_ADMIN")
-    throw new TaskServiceError("FORBIDDEN", "无权限：仅超级管理员可取消");
-  if (!reason) throw new TaskServiceError("PROXY_REASON_REQUIRED", "取消原因必填");
+
+  const trimmedReason = (reason ?? "").trim();
+  if (!trimmedReason)
+    throw new TaskServiceError("PROXY_REASON_REQUIRED", "取消原因必填");
+  if (trimmedReason.length > 200)
+    throw new TaskServiceError("INVALID_INPUT", "取消原因最多 200 字");
 
   const task = getTask(db, taskId);
   if (task.status === "CANCELLED") return; // 幂等
   if (task.status === "IN_PROGRESS" || task.status === "COMPLETED")
     throw new TaskServiceError("INVALID_STATUS", "进行中或已结束的任务不能取消");
 
+  // 权限判断：Dominance(INTERNAL_ADMIN) 可取消任意；责任编辑仅可取消自己书稿
+  if (operator.role !== "INTERNAL_ADMIN" && operator.role !== "RESPONSIBLE_EDITOR") {
+    throw new TaskServiceError("FORBIDDEN", "无权限：仅责任编辑或超级管理员可取消");
+  }
+  if (operator.role === "RESPONSIBLE_EDITOR") {
+    const book = db
+      .prepare(
+        "SELECT b.editor_id FROM tasks t JOIN books b ON b.id = t.book_id WHERE t.id = ?",
+      )
+      .get(taskId) as { editor_id: number | null } | undefined;
+    if (book?.editor_id !== operator.id)
+      throw new TaskServiceError("FORBIDDEN", "无权取消其他责任编辑的任务");
+  }
+
   const cancelledAt = now();
+  const isProxy = operator.role === "INTERNAL_ADMIN";
 
   db.transaction(() => {
     const info = db
       .prepare(
         "UPDATE tasks SET status='CANCELLED', cancelled_by=?, cancelled_at=?, cancellation_reason=? WHERE id=? AND status IN ('PENDING_CONFIRMATION','READY_TO_START')",
       )
-      .run(operator.id, cancelledAt, reason, taskId);
+      .run(operator.id, cancelledAt, trimmedReason, taskId);
 
     if (info.changes === 0) {
       const current = getTask(db, taskId);
@@ -591,17 +609,19 @@ export function cancelTask(
       throw new TaskServiceError("INVALID_STATUS", "当前状态不允许取消");
     }
 
-    insertEvent(db, taskId, EVENT_CANCELLED, operator, false, null, task.status, "CANCELLED");
-    insertAudit(
-      db,
-      operator.id,
-      "CANCEL",
-      taskId,
-      reason,
-      JSON.stringify({ status: task.status }),
-      JSON.stringify({ status: "CANCELLED" }),
-      null,
-    );
+    insertEvent(db, taskId, EVENT_CANCELLED, operator, isProxy, isProxy ? "RESPONSIBLE_EDITOR" : null, task.status, "CANCELLED");
+    if (isProxy) {
+      insertAudit(
+        db,
+        operator.id,
+        "PROXY_CANCEL",
+        taskId,
+        trimmedReason,
+        JSON.stringify({ status: task.status }),
+        JSON.stringify({ status: "CANCELLED" }),
+        "RESPONSIBLE_EDITOR",
+      );
+    }
   })();
 }
 

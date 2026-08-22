@@ -14,7 +14,7 @@ const ROLE_LABELS: Record<string, string> = {
   RESPONSIBLE_EDITOR: "责任编辑",
   EXTERNAL_SUPERVISOR: "外校公司主管",
   PROOFREADER: "校对人员",
-  INTERNAL_ADMIN: "社内校对主管",
+  INTERNAL_ADMIN: "Dominance",
 };
 
 const CREATE_ROLE_OPTIONS = [
@@ -339,7 +339,7 @@ export default function UserAdminPanel({
                   )}
                   {isAdmin && (
                     <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
-                      超级管理员
+                      Dominance
                     </span>
                   )}
                 </span>

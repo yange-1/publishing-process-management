@@ -370,7 +370,7 @@ export default function PublishForm({
       {/* 管理员代发布 */}
       {isAdmin && (
         <section className="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <h2 className="text-base font-semibold text-amber-800">代发布（超级管理员）</h2>
+          <h2 className="text-base font-semibold text-amber-800">代发布（Dominance）</h2>
           {bookMode === "new" ? (
             <div>
               <label className="mb-1 block text-sm text-gray-600">目标责任编辑</label>

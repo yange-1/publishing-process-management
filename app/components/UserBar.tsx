@@ -6,7 +6,7 @@ const ROLE_LABELS: Record<string, string> = {
   RESPONSIBLE_EDITOR: "责任编辑",
   EXTERNAL_SUPERVISOR: "外校公司主管",
   PROOFREADER: "校对人员",
-  INTERNAL_ADMIN: "社内校对主管",
+  INTERNAL_ADMIN: "Dominance",
 };
 
 export default function UserBar({ name, role }: { name: string; role: string }) {

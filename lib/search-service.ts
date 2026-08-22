@@ -12,7 +12,7 @@ export const EVENT_LABELS: Record<string, string> = {
 };
 
 export const ROLE_LABELS: Record<string, string> = {
-  INTERNAL_ADMIN: "社内校对主管",
+  INTERNAL_ADMIN: "Dominance",
   RESPONSIBLE_EDITOR: "责任编辑",
   EXTERNAL_SUPERVISOR: "外校主管",
   PROOFREADER: "校对人员",

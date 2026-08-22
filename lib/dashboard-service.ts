@@ -11,6 +11,7 @@ export interface DashboardTask {
   workType: string;
   starLevel: number;
   editorName: string | null;
+  editorId: number | null;
   publisherCompanyName: string | null;
   companyName: string | null;
   companyId: number | null;
@@ -86,7 +87,7 @@ export function overdueInfo(task: DashboardTask, now: Date): OverdueInfo {
 }
 
 const BASE_SELECT = `
-  SELECT t.id, b.id AS bookId, b.title, t.stage, t.work_type AS workType, t.star_level AS starLevel,
+  SELECT t.id, b.id AS bookId, b.editor_id AS editorId, b.title, t.stage, t.work_type AS workType, t.star_level AS starLevel,
          t.published_at AS publishedAt, t.status,
          t.proofreader_id AS proofreaderId, t.started_at AS startedAt,
          t.finished_at AS finishedAt,

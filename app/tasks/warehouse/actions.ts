@@ -2,7 +2,7 @@
 
 import { getCurrentUser } from "@/lib/session";
 import { openDatabase } from "@/lib/db";
-import { startTask, finishTask, taskErrorMessage } from "@/lib/task-service";
+import { startTask, finishTask, cancelTask, taskErrorMessage } from "@/lib/task-service";
 
 export type StartActionResult =
   | { ok: true; message: string }
@@ -50,6 +50,26 @@ export async function finishTaskAction(input: {
   try {
     finishTask(db, input.taskId, current.id, { proxyReason: input.proxyReason });
     return { ok: true, message: "已结束校对，任务已完成" };
+  } catch (e) {
+    return { ok: false, message: taskErrorMessage(e) };
+  } finally {
+    db.close();
+  }
+}
+
+export async function cancelTaskAction(input: {
+  taskId: number;
+  reason: string;
+}): Promise<StartActionResult> {
+  const current = await getCurrentUser();
+  if (!current) return { ok: false, message: "未登录或会话已失效，请重新登录" };
+  if (current.must_change_password === 1) return { ok: false, message: "请先完成首次改密" };
+  if (current.role !== "RESPONSIBLE_EDITOR" && current.role !== "INTERNAL_ADMIN") return { ok: false, message: "无权限执行此操作" };
+
+  const db = openDatabase();
+  try {
+    cancelTask(db, input.taskId, current.id, input.reason);
+    return { ok: true, message: "任务已取消" };
   } catch (e) {
     return { ok: false, message: taskErrorMessage(e) };
   } finally {

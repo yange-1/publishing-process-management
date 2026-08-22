@@ -262,7 +262,7 @@ test("18. 五类事件中文名称映射正确", () => {
 });
 
 test("19. 四类角色中文名称映射正确", () => {
-  assert.strictEqual(ROLE_LABELS.INTERNAL_ADMIN, "社内校对主管");
+  assert.strictEqual(ROLE_LABELS.INTERNAL_ADMIN, "Dominance");
   assert.strictEqual(ROLE_LABELS.RESPONSIBLE_EDITOR, "责任编辑");
   assert.strictEqual(ROLE_LABELS.EXTERNAL_SUPERVISOR, "外校主管");
   assert.strictEqual(ROLE_LABELS.PROOFREADER, "校对人员");

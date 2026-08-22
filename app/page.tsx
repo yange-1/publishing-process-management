@@ -18,6 +18,7 @@ import DashboardTaskRow from "@/components/DashboardTaskRow";
 import DashboardOverdueRow from "@/components/DashboardOverdueRow";
 import StartActions from "@/components/StartActions";
 import FinishActions from "@/components/FinishActions";
+import CancelActions from "@/components/CancelActions";
 import SearchBox from "@/components/SearchBox";
 
 type StatTone = "slate" | "amber" | "blue" | "red" | "emerald";
@@ -147,20 +148,36 @@ export default async function Home() {
                   const isMine =
                     user.role === "PROOFREADER" && task.companyId === user.company_id;
                   const isAdmin = user.role === "INTERNAL_ADMIN";
-                  const canAct = (isMine || isAdmin) && task.status === "READY_TO_START";
-                  const action = canAct ? (
-                    <StartActions
-                      taskId={task.id}
-                      taskCompanyId={task.companyId}
-                      currentRole={user.role}
-                      currentCompanyId={user.company_id ?? null}
-                      proofreaders={
-                        isAdmin && task.companyId != null
-                          ? proofreadersByCompany.get(task.companyId) ?? []
-                          : []
-                      }
-                    />
-                  ) : undefined;
+                  const canStart = (isMine || isAdmin) && task.status === "READY_TO_START";
+                  const canCancel =
+                    (isAdmin ||
+                      (user.role === "RESPONSIBLE_EDITOR" && task.editorId === user.id)) &&
+                    (task.status === "PENDING_CONFIRMATION" || task.status === "READY_TO_START");
+                  const action =
+                    canStart || canCancel ? (
+                      <div className="flex flex-col items-end gap-2">
+                        {canStart && (
+                          <StartActions
+                            taskId={task.id}
+                            taskCompanyId={task.companyId}
+                            currentRole={user.role}
+                            currentCompanyId={user.company_id ?? null}
+                            proofreaders={
+                              isAdmin && task.companyId != null
+                                ? proofreadersByCompany.get(task.companyId) ?? []
+                                : []
+                            }
+                          />
+                        )}
+                        {canCancel && (
+                          <CancelActions
+                            task={task}
+                            currentRole={user.role}
+                            currentUserId={user.id}
+                          />
+                        )}
+                      </div>
+                    ) : undefined;
                   return (
                     <DashboardTaskRow
                       key={task.id}
