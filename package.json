@@ -9,6 +9,8 @@
     "lint": "eslint",
     "db:init": "node scripts/db-init.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
+    "db:backup": "node scripts/db-backup.mjs",
+    "db:restore-check": "node scripts/db-restore-check.mjs",
     "admin:create": "node scripts/admin-create.mjs",
     "auth:secret": "node scripts/auth-secret.mjs",
     "test:tasks": "node --test test/tasks.test.ts",

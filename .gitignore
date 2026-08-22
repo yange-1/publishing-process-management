@@ -46,3 +46,6 @@ next-env.d.ts
 *.db-wal
 *.db-shm
 *.db-journal
+
+# database backups (local only, never commit)
+/data/backups/
