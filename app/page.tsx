@@ -115,6 +115,12 @@ export default async function Home() {
           >
             我的待办（{myTodoCount}）
           </Link>
+          <Link
+            href="/tasks"
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            任务筛选
+          </Link>
           {(user.role === "RESPONSIBLE_EDITOR" || user.role === "INTERNAL_ADMIN") && (
             <Link
               href="/tasks/new"

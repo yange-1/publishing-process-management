@@ -26,7 +26,8 @@
     "test:overdue": "node --test test/overdue.test.ts",
     "test:cancel": "node --test test/cancel.test.ts",
     "test:todo": "node --test test/todo.test.ts",
-    "test:todo-confirm": "node --test test/todo-confirm.test.ts"
+    "test:todo-confirm": "node --test test/todo-confirm.test.ts",
+    "test:filter": "node --test test/task-filter.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
