@@ -13,6 +13,7 @@ import {
   listActiveProofreaders,
   type ProofreaderOption,
 } from "@/lib/task-service";
+import { listMyTodos } from "@/lib/todo-service";
 import UserBar from "@/app/components/UserBar";
 import DashboardTaskRow from "@/components/DashboardTaskRow";
 import DashboardOverdueRow from "@/components/DashboardOverdueRow";
@@ -61,6 +62,7 @@ export default async function Home() {
   let overdue;
   let activeBooks;
   let pendingCount;
+  let myTodoCount;
   const proofreadersByCompany = new Map<number, ProofreaderOption[]>();
   try {
     warehouse = listWarehouse(db);
@@ -69,6 +71,7 @@ export default async function Home() {
     overdue = listOverdue(db, now);
     activeBooks = countActiveBooks(db);
     pendingCount = countPendingConfirmation(db);
+    myTodoCount = listMyTodos(db, { id: user.id, role: user.role, companyId: user.company_id ?? null }).activeCount;
     if (user.role === "INTERNAL_ADMIN") {
       for (const task of warehouse) {
         if (
@@ -105,6 +108,12 @@ export default async function Home() {
             className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
           >
             待确认收稿（{pendingCount}）
+          </Link>
+          <Link
+            href="/tasks/my-todos"
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            我的待办（{myTodoCount}）
           </Link>
           {(user.role === "RESPONSIBLE_EDITOR" || user.role === "INTERNAL_ADMIN") && (
             <Link
