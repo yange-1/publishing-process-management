@@ -1,9 +1,17 @@
 import Link from "next/link";
 import { STAGE_LABELS, WORK_TYPE_LABELS, type OverdueItem } from "@/lib/dashboard-service";
+import { buildReminder } from "@/lib/reminder";
 
 export default function DashboardOverdueRow({ item }: { item: OverdueItem }) {
   const stageLabel = STAGE_LABELS[item.stage] ?? item.stage;
   const workTypeLabel = WORK_TYPE_LABELS[item.workType] ?? "读校";
+  // 超过阈值（exceedDays > 0）用醒目红色；达到阈值当天（exceedDays === 0）用琥珀色。
+  const exceeded = item.exceedDays > 0;
+  const reminder = buildReminder({
+    waitDays: item.waitDays,
+    thresholdDays: item.thresholdDays,
+    exceedDays: item.exceedDays,
+  });
 
   return (
     <li className="rounded-md border border-red-300 border-l-4 border-l-red-500 bg-red-50 p-2.5">
@@ -26,15 +34,19 @@ export default function DashboardOverdueRow({ item }: { item: OverdueItem }) {
         <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
           {item.location}
         </span>
-        <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-xs font-semibold text-white">
-          已滞留
-        </span>
+        {exceeded && (
+          <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+            已滞留
+          </span>
+        )}
       </div>
-      <div className="mt-1.5 flex items-center gap-2 text-xs">
-        <span className="text-gray-600">已等待 {item.waitDays} 天</span>
-        <span className="text-gray-600">阈值 {item.thresholdDays} 天</span>
-        <span className="ml-auto rounded bg-red-600 px-1.5 py-0.5 font-semibold text-white">
-          超出 {item.exceedDays} 天
+      <div className="mt-1.5 flex items-start gap-2">
+        <span
+          className={`min-w-0 flex-1 break-words text-sm leading-relaxed ${
+            exceeded ? "font-semibold text-red-700" : "font-medium text-amber-700"
+          }`}
+        >
+          {reminder}
         </span>
         <Link
           href={`/books/${item.bookId}`}

@@ -190,7 +190,7 @@ export interface OverdueItem extends DashboardTask {
   location: string;
 }
 
-// 总控预警：未完成任务中超过阈值的任务，超出天数从多到少、同超出星级优先。
+// 总控预警：未完成任务中达到或超过阈值的任务，超出天数从多到少、同超出星级优先。
 export function listOverdue(
   db: Database.Database,
   now: Date = new Date(),
@@ -212,7 +212,7 @@ export function listOverdue(
         location: locationLabel(t.status),
       };
     })
-    .filter((r) => r.exceedDays > 0)
+    .filter((r) => r.exceedDays >= 0)
     .sort(
       (a, b) =>
         b.exceedDays - a.exceedDays ||
