@@ -34,7 +34,8 @@
     "test:filter": "node --test test/task-filter.test.ts",
     "test:search-start": "node --test test/search-start.test.ts",
     "test:supervisor-home": "node --test test/supervisor-home.test.ts",
-    "test:editor-home": "node --test test/editor-home.test.ts"
+    "test:editor-home": "node --test test/editor-home.test.ts",
+    "test:signout-redirect": "node --test test/signout-redirect.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
