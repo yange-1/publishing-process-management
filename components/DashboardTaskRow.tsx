@@ -8,6 +8,7 @@ import {
   overdueInfo,
   type DashboardTask,
 } from "@/lib/dashboard-service";
+import { wordCountText } from "@/lib/task-service";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -70,6 +71,10 @@ export default function DashboardTaskRow({
             {task.publisherCompanyName ?? "—"} · 接收外校公司：
             {task.companyName ?? "—"} · 来稿 {fmtDate(task.publishedAt)} · 已等待{" "}
             {waitDays(task.publishedAt, now)} 天
+          </div>
+          <div className="mt-0.5 truncate text-xs text-gray-500">
+            工作字数：{wordCountText(task.workWordCount)} · 外校确认：
+            {wordCountText(task.externalConfirmedWordCount)}
           </div>
           {task.proofreaderName && (
             <div className="mt-0.5 truncate text-xs text-gray-500">

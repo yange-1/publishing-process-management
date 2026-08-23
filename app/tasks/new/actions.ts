@@ -15,6 +15,7 @@ export type PublishActionResult =
       editorName: string;
       companyName: string | null;
       publishedAt: string;
+      workWordCount: number | null;
     }
   | { ok: false; message: string };
 
@@ -37,6 +38,7 @@ export async function publishTaskAction(input: {
   starLevel: number;
   workType?: string;
   companyId: number;
+  workWordCount: number;
   note?: string;
   editorId?: number;
   proxyReason?: string;
@@ -46,6 +48,9 @@ export async function publishTaskAction(input: {
 
   if (!input.companyId) {
     return { ok: false, message: "请选择接收外校公司" };
+  }
+  if (!Number.isInteger(input.workWordCount) || input.workWordCount <= 0) {
+    return { ok: false, message: "请填写正整数工作字数" };
   }
 
   const db = openDatabase();
@@ -57,6 +62,7 @@ export async function publishTaskAction(input: {
       stage: input.stage,
       starLevel: input.starLevel,
       workType: input.workType,
+      workWordCount: input.workWordCount,
       note: input.note,
       companyId: input.companyId,
       editorId: input.editorId,
@@ -65,7 +71,7 @@ export async function publishTaskAction(input: {
 
     const row = db
       .prepare(
-        `SELECT t.id, b.title, t.stage, t.work_type, t.star_level, t.published_at,
+        `SELECT t.id, b.title, t.stage, t.work_type, t.star_level, t.published_at, t.work_word_count,
                 u.display_name AS editorName, c.name AS companyName
          FROM tasks t
          JOIN books b ON b.id = t.book_id
@@ -80,6 +86,7 @@ export async function publishTaskAction(input: {
         work_type: string;
         star_level: number;
         published_at: string;
+        work_word_count: number | null;
         editorName: string | null;
         companyName: string | null;
       };
@@ -94,6 +101,7 @@ export async function publishTaskAction(input: {
       editorName: row.editorName ?? "",
       companyName: row.companyName,
       publishedAt: row.published_at,
+      workWordCount: row.work_word_count,
     };
   } catch (e) {
     return { ok: false, message: taskErrorMessage(e) };

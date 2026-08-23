@@ -48,6 +48,8 @@ export interface SearchResultItem {
   startedAt: string | null;
   finishedAt: string | null;
   proofreaderName: string | null;
+  workWordCount: number | null;
+  externalConfirmedWordCount: number | null;
 }
 
 export function searchBooks(
@@ -80,6 +82,8 @@ export function searchBooks(
               t.company_id AS companyId,
               t.published_at AS publishedAt, t.confirmed_at AS confirmedAt,
               t.started_at AS startedAt, t.finished_at AS finishedAt,
+              t.work_word_count AS workWordCount,
+              t.external_confirmed_word_count AS externalConfirmedWordCount,
               c.name AS companyName,
               pu.display_name AS proofreaderName
        FROM books b
@@ -151,6 +155,8 @@ export interface BookTaskInfo {
   finishedAt: string | null;
   cancelledAt: string | null;
   note: string | null;
+  workWordCount: number | null;
+  externalConfirmedWordCount: number | null;
 }
 
 export interface BookEventInfo {
@@ -164,6 +170,7 @@ export interface BookEventInfo {
   proxyReason: string | null;
   statusFrom: string | null;
   statusTo: string | null;
+  note: string | null;
   occurredAt: string;
 }
 
@@ -204,6 +211,8 @@ export function getBookDetail(db: Database.Database, bookId: number): BookDetail
               t.published_at AS publishedAt, t.confirmed_at AS confirmedAt,
               t.started_at AS startedAt, t.finished_at AS finishedAt,
               t.cancelled_at AS cancelledAt,
+              t.work_word_count AS workWordCount,
+              t.external_confirmed_word_count AS externalConfirmedWordCount,
               u.display_name AS publisherName,
               c.name AS companyName,
               pu.display_name AS proofreaderName
@@ -226,6 +235,7 @@ export function getBookDetail(db: Database.Database, bookId: number): BookDetail
         `SELECT e.id AS eventId, e.task_id AS taskId, e.event_type AS eventType,
                 e.operator_role AS operatorRole, e.is_proxy AS isProxy,
                 e.proxy_role AS proxyRole, e.status_from AS statusFrom, e.status_to AS statusTo,
+                e.note AS note,
                 e.occurred_at AS occurredAt,
                 u.display_name AS operatorName
          FROM task_events e

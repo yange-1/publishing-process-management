@@ -28,6 +28,8 @@ const MIGRATIONS = [
     columns: [
       { name: "company_id", definition: "INTEGER REFERENCES companies(id)" },
       { name: "work_type", definition: "TEXT NOT NULL DEFAULT 'PROOFREAD'" },
+      { name: "work_word_count", definition: "INTEGER" },
+      { name: "external_confirmed_word_count", definition: "INTEGER" },
     ],
   },
 ];

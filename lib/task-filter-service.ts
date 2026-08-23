@@ -43,6 +43,8 @@ const BASE_SELECT = `
   SELECT t.id, b.id AS bookId, b.editor_id AS editorId, b.title,
          t.stage, t.work_type AS workType, t.star_level AS starLevel,
          t.published_at AS publishedAt, t.status,
+         t.work_word_count AS workWordCount,
+         t.external_confirmed_word_count AS externalConfirmedWordCount,
          t.proofreader_id AS proofreaderId, t.started_at AS startedAt, t.finished_at AS finishedAt,
          u.display_name AS editorName,
          cu.name AS publisherCompanyName,

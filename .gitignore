@@ -49,3 +49,6 @@ next-env.d.ts
 
 # database backups (local only, never commit)
 /data/backups/
+
+# demo database (local only, never commit)
+/data/demo/

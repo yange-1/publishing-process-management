@@ -3,6 +3,7 @@ import { requireCurrentUser } from "@/lib/session";
 import { openDatabase } from "@/lib/db";
 import { searchBooks, proofreaderStartDecision, hasInProgressTask } from "@/lib/search-service";
 import { STAGE_LABELS, STATUS_LABELS, WORK_TYPE_LABELS } from "@/lib/dashboard-service";
+import { wordCountText } from "@/lib/task-service";
 import UserBar from "@/app/components/UserBar";
 import SearchBox from "@/components/SearchBox";
 import SearchStartActions from "@/components/SearchStartActions";
@@ -97,6 +98,10 @@ export default async function SearchPage({
                       责任编辑：{r.editorName ?? "—"} · 发布单位：{r.publisherCompanyName ?? "—"} · 接收外校公司：
                       {r.companyName ?? "—"} · 来稿 {fmt(r.publishedAt)} · 确认 {fmt(r.confirmedAt)} ·
                       开始 {fmt(r.startedAt)} · 完成 {fmt(r.finishedAt)} · 校对人员：{r.proofreaderName ?? "—"}
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-gray-500">
+                      工作字数：{wordCountText(r.workWordCount)} · 外校确认：
+                      {wordCountText(r.externalConfirmedWordCount)}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

@@ -36,6 +36,7 @@ export default async function MyTodosPage() {
         summary={summary}
         currentRole={user.role}
         currentCompanyId={user.company_id ?? null}
+        currentUserId={user.id}
       />
     </main>
   );

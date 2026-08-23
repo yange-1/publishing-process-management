@@ -3,6 +3,7 @@ import { requireCurrentUser } from "@/lib/session";
 import { openDatabase } from "@/lib/db";
 import { getBookDetail, EVENT_LABELS, ROLE_LABELS } from "@/lib/search-service";
 import { STAGE_LABELS, STATUS_LABELS, WORK_TYPE_LABELS } from "@/lib/dashboard-service";
+import { wordCountText } from "@/lib/task-service";
 import UserBar from "@/app/components/UserBar";
 
 function fmt(iso: string | null): string {
@@ -134,6 +135,10 @@ export default async function BookDetailPage({
                   {t.proofreaderName ?? "—"}
                 </div>
                 <div className="mt-0.5 text-xs text-gray-500">
+                  工作字数：{wordCountText(t.workWordCount)} · 外校确认：
+                  {wordCountText(t.externalConfirmedWordCount)}
+                </div>
+                <div className="mt-0.5 text-xs text-gray-500">
                   发布 {fmt(t.publishedAt)} · 确认 {fmt(t.confirmedAt)} · 开始 {fmt(t.startedAt)} · 完成{" "}
                   {fmt(t.finishedAt)}
                   {t.cancelledAt ? <> · 取消 {fmt(t.cancelledAt)}</> : null}
@@ -169,6 +174,9 @@ export default async function BookDetailPage({
                     操作人：{e.operatorName ?? "—"}（{roleLabel}）· {fmt(e.occurredAt)}
                     {e.statusTo ? <> · 状态变为 {STATUS_LABELS[e.statusTo] ?? e.statusTo}</> : null}
                   </div>
+                  {e.note && (
+                    <div className="mt-0.5 text-xs text-gray-500">{e.note}</div>
+                  )}
                   {e.isProxy === 1 && (
                     <div className="mt-0.5 text-xs text-gray-500">
                       被代操作角色：{e.proxyRole ? ROLE_LABELS[e.proxyRole] ?? e.proxyRole : "—"}

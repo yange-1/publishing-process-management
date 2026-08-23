@@ -62,6 +62,7 @@ export default function PublishForm({
   const [companyId, setCompanyId] = useState<string>(() =>
     externalCompanies.length === 1 ? String(externalCompanies[0].id) : "",
   );
+  const [workWordCount, setWorkWordCount] = useState("");
   const [note, setNote] = useState("");
   const [editorId, setEditorId] = useState<number | null>(() =>
     editors.length === 1 ? editors[0].id : null,
@@ -97,6 +98,7 @@ export default function PublishForm({
     setTitle("");
     setBookId(null);
     setNote("");
+    setWorkWordCount("");
     setStage("INITIAL_REVIEW");
     setWorkType("PROOFREAD");
     setStarLevel(1);
@@ -123,6 +125,11 @@ export default function PublishForm({
       setError("请选择接收外校公司");
       return;
     }
+    const workWordCountNum = Number(workWordCount);
+    if (!Number.isInteger(workWordCountNum) || workWordCountNum <= 0) {
+      setError("请填写正整数工作字数");
+      return;
+    }
     if (isAdmin && bookMode === "new" && editorId == null) {
       setError("请从列表中选择一名有效的责任编辑");
       return;
@@ -145,6 +152,7 @@ export default function PublishForm({
       starLevel,
       workType,
       companyId: Number(companyId),
+      workWordCount: workWordCountNum,
       note: note.trim() || undefined,
       editorId: isAdmin && bookMode === "new" ? Number(editorId) : undefined,
       proxyReason: isAdmin ? proxyReason.trim() : undefined,
@@ -179,6 +187,12 @@ export default function PublishForm({
             <div>
               <dt className="text-gray-500">星级</dt>
               <dd className="text-gray-900">{STAR_LABELS[result.starLevel] ?? result.starLevel}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">工作字数</dt>
+              <dd className="text-gray-900">
+                {result.workWordCount != null ? `${result.workWordCount}字` : "未填写"}
+              </dd>
             </div>
             <div>
               <dt className="text-gray-500">责任编辑</dt>
@@ -351,6 +365,23 @@ export default function PublishForm({
             ))}
           </select>
         )}
+      </section>
+
+      {/* 工作字数 */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <label className="mb-1 block text-sm text-gray-600">工作字数（字）</label>
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={workWordCount}
+          onChange={(e) => setWorkWordCount(e.target.value)}
+          placeholder="请输入本次校对的工作字数（正整数）"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          按每一次校对任务分别记录，单位“字”；外校确认字数将自动初始化为该值。
+        </p>
       </section>
 
       {/* 备注 */}

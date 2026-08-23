@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { confirmReceiptAction } from "./actions";
 import CancelActions from "@/components/CancelActions";
-import type { PendingConfirmationItem } from "@/lib/task-service";
+import { wordCountText, type PendingConfirmationItem } from "@/lib/task-service";
 
 const STAGE_LABELS: Record<string, string> = {
   INITIAL_REVIEW: "初审",
@@ -28,6 +28,70 @@ function waitDays(iso: string): number {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return 0;
   return Math.floor((Date.now() - t) / 86400000);
+}
+
+// 外校主管确认收稿：显示工作字数（只读），可编辑外校确认字数后再确认。
+function SupervisorConfirm({ item }: { item: PendingConfirmationItem }) {
+  const router = useRouter();
+  const [count, setCount] = useState<string>(() =>
+    (item.externalConfirmedWordCount ?? item.workWordCount) != null
+      ? String(item.externalConfirmedWordCount ?? item.workWordCount)
+      : "",
+  );
+  const [pendingId, setPendingId] = useState<number | null>(null);
+  const [message, setMessage] = useState<Message>(null);
+
+  async function submit() {
+    const num = Number(count);
+    if (!Number.isInteger(num) || num <= 0) {
+      setMessage({ kind: "err", text: "外校确认字数须为正整数" });
+      return;
+    }
+    setPendingId(item.id);
+    setMessage(null);
+    const res = await confirmReceiptAction({
+      taskId: item.id,
+      externalConfirmedWordCount: num,
+    });
+    setPendingId(null);
+    if (res.ok) {
+      setMessage({ kind: "ok", text: res.message });
+      router.refresh();
+    } else {
+      setMessage({ kind: "err", text: res.message });
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-1.5">
+        <label className="text-xs text-gray-500">外校确认字数</label>
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={count}
+          onChange={(e) => setCount(e.target.value)}
+          className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm"
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={pendingId === item.id}
+          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {pendingId === item.id ? "处理中…" : "确认收稿"}
+        </button>
+      </div>
+      {message && (
+        <div
+          className={message.kind === "ok" ? "text-xs text-emerald-600" : "text-xs text-red-600"}
+        >
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function PendingList({
@@ -129,6 +193,10 @@ export default function PendingList({
                       {item.companyName ?? "—"} · 来稿 {fmtDate(item.publishedAt)} ·
                       已等待 {waitDays(item.publishedAt)} 天
                     </div>
+                    <div className="mt-0.5 truncate text-xs text-gray-500">
+                      工作字数：{wordCountText(item.workWordCount)} · 外校确认：
+                      {wordCountText(item.externalConfirmedWordCount)}
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {actionable ? (
@@ -137,13 +205,7 @@ export default function PendingList({
                           处理中…
                         </span>
                       ) : canConfirm ? (
-                        <button
-                          type="button"
-                          onClick={() => run(item.id)}
-                          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                        >
-                          确认收稿
-                        </button>
+                        <SupervisorConfirm item={item} />
                       ) : (
                         <button
                           type="button"

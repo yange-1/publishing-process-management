@@ -126,6 +126,21 @@ function assertWorkType(workType: string | undefined): WorkType {
   return wt as WorkType;
 }
 
+// 字数统一单位为“字”，只允许正整数；未提供时视为可空（历史任务为 NULL）。
+function assertPositiveInt(value: number | null | undefined, label: string): number | null {
+  if (value == null) return null;
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new TaskServiceError("INVALID_INPUT", `${label}须为正整数`);
+  }
+  return value;
+}
+
+// 字数展示文本：NULL 显示“未填写”，否则显示“XX字”。
+export function wordCountText(value: number | null | undefined): string {
+  if (value == null) return "未填写";
+  return `${value}字`;
+}
+
 function insertEvent(
   db: Database.Database,
   taskId: number,
@@ -135,9 +150,10 @@ function insertEvent(
   proxyRole: string | null,
   statusFrom: string | null,
   statusTo: string,
+  note: string | null = null,
 ): void {
   db.prepare(
-    "INSERT INTO task_events(task_id, event_type, operator_id, operator_role, is_proxy, proxy_role, status_from, status_to, occurred_at) VALUES (?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO task_events(task_id, event_type, operator_id, operator_role, is_proxy, proxy_role, status_from, status_to, note, occurred_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
   ).run(
     taskId,
     eventType,
@@ -147,6 +163,7 @@ function insertEvent(
     proxyRole,
     statusFrom,
     statusTo,
+    note,
     now(),
   );
 }
@@ -192,6 +209,7 @@ export interface PublishParams {
   starLevel: number;
   workType?: string; // 本次工作内容：读校/核红/读校且核红
   note?: string;
+  workWordCount?: number; // 工作字数（发布时填写，正整数；历史任务可为空）
   companyId?: number; // 接收外校公司
   editorId?: number; // 代发时指定目标责任编辑
   proxyReason?: string; // 代发原因
@@ -205,6 +223,10 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
   assertStar(params.starLevel);
 
   const workType = assertWorkType(params.workType);
+
+  // 工作字数：新发布任务必填（页面/接口层强制），服务层对传入值做正整数校验；
+  // 历史任务与兼容旧调用可留空，存 NULL。
+  const workWordCount = assertPositiveInt(params.workWordCount, "工作字数");
 
   // 备注：可选，最多 200 字
   const note = (params.note ?? "").trim();
@@ -285,7 +307,7 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
 
     const taskResult = db
       .prepare(
-        "INSERT INTO tasks(book_id, stage, work_type, star_level, status, note, publisher_id, published_at, company_id) VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO tasks(book_id, stage, work_type, star_level, status, note, publisher_id, published_at, company_id, work_word_count, external_confirmed_word_count) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         bookId,
@@ -297,6 +319,9 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
         editorId,
         publishedAt,
         params.companyId ?? null,
+        workWordCount,
+        // 创建时外校确认字数自动初始化为工作字数（两个字段分别保存）
+        workWordCount,
       );
     const taskId = Number(taskResult.lastInsertRowid);
 
@@ -309,7 +334,7 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
         taskId,
         proxyReason,
         null,
-        JSON.stringify({ bookId, stage, workType, starLevel: params.starLevel, editorId, companyId: params.companyId ?? null }),
+        JSON.stringify({ bookId, stage, workType, starLevel: params.starLevel, editorId, companyId: params.companyId ?? null, workWordCount }),
         "RESPONSIBLE_EDITOR",
       );
     }
@@ -321,6 +346,7 @@ export function publishTask(db: Database.Database, params: PublishParams): numbe
 
 export interface ConfirmOptions {
   proxyReason?: string; // 管理员代确认时填写
+  externalConfirmedWordCount?: number; // 外校确认字数（主管确认时可修改；缺省=工作字数）
 }
 
 export type ConfirmResult = "confirmed" | "already_confirmed";
@@ -337,8 +363,18 @@ export function confirmReceipt(
   }
 
   const task = db
-    .prepare("SELECT id, status, company_id FROM tasks WHERE id = ?")
-    .get(taskId) as { id: number; status: string; company_id: number | null } | undefined;
+    .prepare(
+      "SELECT id, status, company_id, work_word_count, external_confirmed_word_count FROM tasks WHERE id = ?",
+    )
+    .get(taskId) as
+    | {
+        id: number;
+        status: string;
+        company_id: number | null;
+        work_word_count: number | null;
+        external_confirmed_word_count: number | null;
+      }
+    | undefined;
   if (!task) throw new TaskServiceError("TASK_NOT_FOUND", "任务不存在");
 
   let companyId: number | null;
@@ -362,14 +398,25 @@ export function confirmReceipt(
     isProxy = true;
   }
 
+  // 外校确认字数：主管/管理员可修改；未提供时默认等于工作字数（历史任务可能为 NULL）。
+  // 仅外校主管或管理员可改，责任编辑/校对人员根本无法走到确认步骤（已在角色门禁拦截）。
+  const externalConfirmedWordCount =
+    assertPositiveInt(opts.externalConfirmedWordCount, "外校确认字数") ?? task.work_word_count;
+
+  const beforeCount = task.external_confirmed_word_count;
+  const wordCountChanged = externalConfirmedWordCount !== beforeCount;
+  const wordCountNote = wordCountChanged
+    ? `外校确认字数：${wordCountText(beforeCount)} → ${wordCountText(externalConfirmedWordCount)}`
+    : null;
+
   const confirmedAt = now();
 
   return db.transaction(() => {
     const info = db
       .prepare(
-        "UPDATE tasks SET status='READY_TO_START', confirmer_id=?, confirm_company_id=?, confirmed_at=? WHERE id=? AND status='PENDING_CONFIRMATION'",
+        "UPDATE tasks SET status='READY_TO_START', confirmer_id=?, confirm_company_id=?, confirmed_at=?, external_confirmed_word_count=? WHERE id=? AND status='PENDING_CONFIRMATION'",
       )
-      .run(operator.id, companyId, confirmedAt, taskId);
+      .run(operator.id, companyId, confirmedAt, externalConfirmedWordCount, taskId);
 
     if (info.changes === 0) {
       const current = getTask(db, taskId);
@@ -380,7 +427,7 @@ export function confirmReceipt(
       return "already_confirmed"; // READY_TO_START：已被确认，无需重复操作
     }
 
-    insertEvent(db, taskId, EVENT_CONFIRMED, operator, isProxy, isProxy ? "EXTERNAL_SUPERVISOR" : null, "PENDING_CONFIRMATION", "READY_TO_START");
+    insertEvent(db, taskId, EVENT_CONFIRMED, operator, isProxy, isProxy ? "EXTERNAL_SUPERVISOR" : null, "PENDING_CONFIRMATION", "READY_TO_START", wordCountNote);
     if (isProxy) {
       insertAudit(
         db,
@@ -391,6 +438,19 @@ export function confirmReceipt(
         JSON.stringify({ status: "PENDING_CONFIRMATION" }),
         JSON.stringify({ status: "READY_TO_START", companyId }),
         "EXTERNAL_SUPERVISOR",
+      );
+    }
+    if (wordCountChanged) {
+      // 外校确认字数发生变化：写入审计（操作者、时间、修改前值、修改后值），历史可追踪。
+      insertAudit(
+        db,
+        operator.id,
+        "CONFIRM_WORD_COUNT",
+        taskId,
+        proxyReason || "外校确认字数调整",
+        JSON.stringify({ external_confirmed_word_count: beforeCount }),
+        JSON.stringify({ external_confirmed_word_count: externalConfirmedWordCount }),
+        isProxy ? "EXTERNAL_SUPERVISOR" : null,
       );
     }
     return "confirmed";
@@ -829,16 +889,49 @@ export interface PendingConfirmationItem {
   companyId: number | null;
   publishedAt: string;
   status: string;
+  workWordCount: number | null;
+  externalConfirmedWordCount: number | null;
+}
+
+// 待确认列表/计数的统一范围规则：默认全部；可按责任编辑或接收外校公司收窄。
+// 计数与列表必须复用同一范围，避免再次出现“数量与列表不一致”。
+export interface PendingConfirmationScope {
+  editorId?: number; // 仅 books.editor_id = 该责任编辑
+  companyId?: number; // 仅 tasks.company_id = 该接收外校公司
+}
+
+function pendingScope(scope?: PendingConfirmationScope): {
+  conditions: string[];
+  params: number[];
+  needsBookJoin: boolean;
+} {
+  const conditions = ["t.status = 'PENDING_CONFIRMATION'"];
+  const params: number[] = [];
+  let needsBookJoin = false;
+  if (scope?.editorId != null) {
+    conditions.push("b.editor_id = ?");
+    params.push(scope.editorId);
+    needsBookJoin = true;
+  }
+  if (scope?.companyId != null) {
+    conditions.push("t.company_id = ?");
+    params.push(scope.companyId);
+  }
+  return { conditions, params, needsBookJoin };
 }
 
 export function listPendingConfirmation(
   db: Database.Database,
+  scope?: PendingConfirmationScope,
 ): PendingConfirmationItem[] {
+  const { conditions, params } = pendingScope(scope);
   return db
     .prepare(
       `SELECT t.id, b.id AS bookId, b.title, t.stage, t.work_type AS workType, t.star_level AS starLevel,
               b.editor_id AS editorId,
               t.published_at AS publishedAt, t.status, t.company_id AS companyId,
+              t.work_word_count AS workWordCount,
+              t.external_confirmed_word_count AS externalConfirmedWordCount,
               u.display_name AS editorName,
               cu.name AS publisherCompanyName,
               c.name AS companyName
@@ -847,12 +940,21 @@ export function listPendingConfirmation(
        LEFT JOIN users u ON u.id = t.publisher_id
        LEFT JOIN companies cu ON cu.id = u.company_id
        LEFT JOIN companies c ON c.id = t.company_id
-       WHERE t.status = 'PENDING_CONFIRMATION'
+       WHERE ${conditions.join(" AND ")}
        ORDER BY t.star_level DESC, t.published_at ASC, t.id ASC`,
     )
-    .all() as PendingConfirmationItem[];
+    .all(...params) as PendingConfirmationItem[];
 }
 
-export function countPendingConfirmation(db: Database.Database): number {
-  return (db.prepare("SELECT COUNT(*) c FROM tasks WHERE status = 'PENDING_CONFIRMATION'").get() as { c: number }).c;
+export function countPendingConfirmation(
+  db: Database.Database,
+  scope?: PendingConfirmationScope,
+): number {
+  const { conditions, params, needsBookJoin } = pendingScope(scope);
+  const join = needsBookJoin ? "JOIN books b ON b.id = t.book_id" : "";
+  return (
+    db
+      .prepare(`SELECT COUNT(*) c FROM tasks t ${join} WHERE ${conditions.join(" AND ")}`)
+      .get(...params) as { c: number }
+  ).c;
 }

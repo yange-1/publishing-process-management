@@ -235,7 +235,29 @@ test("12. 源码：我的待办复用 confirmReceiptAction，服务端回查角�
   assert.ok(!action.includes("input.confirmedAt"));
 });
 
-test("13. 待办确认测试不污染正式数据库", () => {
+test("13. 源码：我的待办对进行中任务复用 FinishActions 结束入口", () => {
+  const todoList = fs.readFileSync(
+    path.join(process.cwd(), "app", "tasks", "my-todos", "TodoList.tsx"),
+    "utf-8",
+  );
+  assert.ok(todoList.includes("FinishActions"));
+  assert.ok(todoList.includes('item.status === "IN_PROGRESS"'));
+  assert.ok(!todoList.includes("UPDATE tasks"));
+
+  const page = fs.readFileSync(
+    path.join(process.cwd(), "app", "tasks", "my-todos", "page.tsx"),
+    "utf-8",
+  );
+  assert.ok(page.includes("currentUserId"));
+
+  const finish = fs.readFileSync(
+    path.join(process.cwd(), "components", "FinishActions.tsx"),
+    "utf-8",
+  );
+  assert.ok(finish.includes("finishTaskAction"));
+});
+
+test("14. 待办确认测试不污染正式数据库", () => {
   if (!fs.existsSync(FORMAL_PATH)) return;
   assert.deepStrictEqual(formalCounts(), FORMAL_BASELINE);
 });

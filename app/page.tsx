@@ -108,8 +108,8 @@ export default async function Home({
     pendingCount = countPendingConfirmation(db);
     myTodoCount = listMyTodos(db, { id: user.id, role: user.role, companyId: user.company_id ?? null }).activeCount;
     supervisorPending =
-      user.role === "EXTERNAL_SUPERVISOR"
-        ? listPendingConfirmation(db).filter((t) => t.companyId === user.company_id)
+      user.role === "EXTERNAL_SUPERVISOR" && user.company_id != null
+        ? listPendingConfirmation(db, { companyId: user.company_id })
         : [];
     externalCompanies = listActiveExternalCompanies(db);
     warehouseByCompany = countWarehouseByCompany(db);
@@ -117,7 +117,7 @@ export default async function Home({
       myProduction = listProductionByEditor(db, user.id);
       myCompleted = listCompletedByEditor(db, user.id);
       myActiveBooks = countActiveBooksByEditor(db, user.id);
-      myPendingCount = listPendingConfirmation(db).filter((t) => t.editorId === user.id).length;
+      myPendingCount = countPendingConfirmation(db, { editorId: user.id });
     }
     if (user.role === "INTERNAL_ADMIN") {
       for (const task of warehouse) {
@@ -162,7 +162,7 @@ export default async function Home({
               href="/tasks/pending-confirmation"
               className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
             >
-              待确认收稿（{isEditor ? myPendingCount : pendingCount}）
+              {isEditor ? "我的待确认" : "待确认收稿"}（{isEditor ? myPendingCount : pendingCount}）
             </Link>
           )}
           {user.role !== "EXTERNAL_SUPERVISOR" && (

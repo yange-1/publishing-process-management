@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   work_type           TEXT    NOT NULL DEFAULT 'PROOFREAD' CHECK (work_type IN (
                         'PROOFREAD', 'RED_CHECK', 'PROOFREAD_AND_RED_CHECK'
                       )),
+  -- 字数（按每一次校对任务分别记录；NULL=未填写，禁止用 0 或虚构数字填充）
+  -- 工作字数：责任编辑/管理员发布时填写，发布后不可修改
+  -- 外校确认字数：创建时自动等于工作字数，外校主管确认收稿时可修改
+  work_word_count              INTEGER,
+  external_confirmed_word_count INTEGER,
   -- 星级：1=普通 2=加急 3=重要急稿
   star_level          INTEGER NOT NULL CHECK (star_level BETWEEN 1 AND 3),
   status              TEXT    NOT NULL DEFAULT 'PENDING_CONFIRMATION' CHECK (status IN (
