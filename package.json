@@ -36,7 +36,8 @@
     "test:supervisor-home": "node --test test/supervisor-home.test.ts",
     "test:editor-home": "node --test test/editor-home.test.ts",
     "test:signout-redirect": "node --test test/signout-redirect.test.ts",
-    "test:reminder": "node --test test/reminder.test.ts"
+    "test:reminder": "node --test test/reminder.test.ts",
+    "test:report": "node --test test/report.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

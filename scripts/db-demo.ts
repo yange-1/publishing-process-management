@@ -50,7 +50,7 @@ db.exec(SCHEMA);
 
 // ===== 虚构演示账户 =====
 const C = { internal: 1, companyA: 2, companyB: 3 };
-const U = { admin: 1, editorA: 2, editorB: 3, supervisor: 4, pfA: 5, pfB: 6 };
+const U = { admin: 1, editorA: 2, editorB: 3, supervisor: 4, pfA: 5, pfB: 6, supervisorB: 7, pfC: 8 };
 
 const demoPassword = hashPassword("123456"); // 演示密码，禁止用于正式部署
 
@@ -64,8 +64,19 @@ db.prepare(
     (3, 'demo_editor_b', '演示编辑乙', 'RESPONSIBLE_EDITOR', 1, 1, 0, ?),
     (4, 'demo_supervisor', '演示主管甲', 'EXTERNAL_SUPERVISOR', 2, 1, 0, ?),
     (5, 'demo_proofreader_a', '演示校对甲', 'PROOFREADER', 2, 1, 0, ?),
-    (6, 'demo_proofreader_b', '演示校对乙', 'PROOFREADER', 2, 1, 0, ?)`,
-).run(demoPassword, demoPassword, demoPassword, demoPassword, demoPassword, demoPassword);
+    (6, 'demo_proofreader_b', '演示校对乙', 'PROOFREADER', 2, 1, 0, ?),
+    (7, 'demo_supervisor_b', '演示主管乙', 'EXTERNAL_SUPERVISOR', 3, 1, 0, ?),
+    (8, 'demo_proofreader_c', '演示校对丙', 'PROOFREADER', 3, 1, 0, ?)`,
+).run(
+  demoPassword,
+  demoPassword,
+  demoPassword,
+  demoPassword,
+  demoPassword,
+  demoPassword,
+  demoPassword,
+  demoPassword,
+);
 
 // ===== 虚构业务数据（全部使用真实服务函数写入，保证事件与审计一致） =====
 
@@ -194,6 +205,86 @@ db.prepare("UPDATE tasks SET published_at = ? WHERE id = ?").run(
   new Date(Date.now() - 10 * 86400000).toISOString(), // 三星阈值 7 天，滞留 3 天
   overdue2,
 );
+
+// ---- 7. 报表中心演示数据（跨月/半年/年度、按期/超期/滞留/取消、字数缺失、多公司） ----
+
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 86400000).toISOString();
+}
+function setPublished(taskId: number, daysAgo: number): void {
+  db.prepare("UPDATE tasks SET published_at = ? WHERE id = ?").run(daysAgoIso(daysAgo), taskId);
+}
+function setFinished(taskId: number, daysAgo: number): void {
+  db.prepare("UPDATE tasks SET finished_at = ? WHERE id = ?").run(daysAgoIso(daysAgo), taskId);
+}
+function setCancelled(taskId: number, daysAgo: number): void {
+  db.prepare("UPDATE tasks SET cancelled_at = ? WHERE id = ?").run(daysAgoIso(daysAgo), taskId);
+}
+// 已完成任务：发布/确认/开始/结束后，再把发布与完成时间回拨到指定天数前。
+function reportCompleted(
+  editorId: number,
+  title: string,
+  stage: string,
+  starLevel: number,
+  companyId: number,
+  supervisorId: number,
+  proofreaderId: number,
+  workWordCount: number,
+  externalConfirmedWordCount: number,
+  publishedDaysAgo: number,
+  finishedDaysAgo: number,
+): number {
+  const id = publishTask(db, {
+    operatorId: editorId,
+    bookTitle: title,
+    stage,
+    starLevel,
+    workType: "PROOFREAD",
+    companyId,
+    workWordCount,
+  });
+  confirmReceipt(db, id, supervisorId, { externalConfirmedWordCount });
+  startTask(db, id, proofreaderId);
+  finishTask(db, id, proofreaderId);
+  setPublished(id, publishedDaysAgo);
+  setFinished(id, finishedDaysAgo);
+  return id;
+}
+
+// 公司A：按期/超期/字数缺失/历史滞留/年报样本
+reportCompleted(U.editorA, "《演示图书·报表按期甲》", "FIRST_PROOF", 1, C.companyA, U.supervisor, U.pfB, 120000, 118000, 10, 4);
+reportCompleted(U.editorB, "《演示图书·报表按期乙》", "FIRST_PROOF", 1, C.companyA, U.supervisor, U.pfB, 80000, 80000, 40, 36);
+const raOverdue = reportCompleted(U.editorA, "《演示图书·报表超期》", "FIRST_PROOF", 1, C.companyA, U.supervisor, U.pfB, 150000, 150000, 70, 30);
+db.prepare("UPDATE tasks SET external_confirmed_word_count = NULL WHERE id = ?").run(raOverdue); // 外校确认字数缺失
+const raMissingWork = reportCompleted(U.editorB, "《演示图书·报表缺工作字数》", "SECOND_PROOF", 2, C.companyA, U.supervisor, U.pfB, 90000, 90000, 100, 92);
+db.prepare("UPDATE tasks SET work_word_count = NULL WHERE id = ?").run(raMissingWork); // 工作字数缺失
+reportCompleted(U.editorA, "《演示图书·历史滞留后完成》", "FIRST_PROOF", 1, C.companyA, U.supervisor, U.pfB, 100000, 100000, 80, 5); // 发布 80 天前、完成 5 天前
+reportCompleted(U.editorB, "《演示图书·年报样本》", "INITIAL_REVIEW", 1, C.companyA, U.supervisor, U.pfB, 70000, 70000, 200, 195);
+
+// 滞留（仍在仓库，未完成）
+const raStuck = toReady(U.editorA, "《演示图书·报表滞留》", "FIRST_PROOF", 1, "PROOFREAD", C.companyA, 110000);
+setPublished(raStuck, 95);
+
+// 取消（不计入报表）
+const raCancel = publish(U.editorA, "《演示图书·报表取消》", "FIRST_PROOF", 1, "PROOFREAD", C.companyA, 50000);
+cancelTask(db, raCancel, U.editorA, "报表演示误发");
+setPublished(raCancel, 60);
+setCancelled(raCancel, 55);
+
+// 公司B：外校主管乙 + 校对丙，用于验证公司隔离
+reportCompleted(U.editorA, "《演示图书·报表公司B甲》", "FIRST_PROOF", 1, C.companyB, U.supervisorB, U.pfC, 60000, 60000, 15, 10);
+reportCompleted(U.editorB, "《演示图书·报表公司B乙》", "FIRST_PROOF", 1, C.companyB, U.supervisorB, U.pfC, 50000, 50000, 90, 85);
+const rbReady = publishTask(db, {
+  operatorId: U.editorA,
+  bookTitle: "《演示图书·报表公司B待开始》",
+  stage: "FIRST_PROOF",
+  starLevel: 1,
+  workType: "PROOFREAD",
+  companyId: C.companyB,
+  workWordCount: 45000,
+});
+confirmReceipt(db, rbReady, U.supervisorB, {});
+setPublished(rbReady, 30);
 
 // ===== 输出摘要 =====
 function count(sql: string): number {

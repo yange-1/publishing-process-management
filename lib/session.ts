@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "./auth";
 import { getSessionUser, type AuthUser } from "./auth-service";
 import { openDatabase } from "./db";
+import { canAccessReport } from "./report-permission";
 
 export type CurrentUser = AuthUser;
 
@@ -31,5 +32,12 @@ export async function requireRole(role: string): Promise<CurrentUser> {
   if (user.role !== role && user.role !== "INTERNAL_ADMIN") {
     redirect("/");
   }
+  return user;
+}
+
+// 报表中心：仅 INTERNAL_ADMIN 与 EXTERNAL_SUPERVISOR 可访问，其余角色跳回首页。
+export async function requireReportViewer(): Promise<CurrentUser> {
+  const user = await requireCurrentUser();
+  if (!canAccessReport(user.role)) redirect("/");
   return user;
 }

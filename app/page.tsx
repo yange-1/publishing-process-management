@@ -179,6 +179,14 @@ export default async function Home({
           >
             任务筛选
           </Link>
+          {(user.role === "INTERNAL_ADMIN" || user.role === "EXTERNAL_SUPERVISOR") && (
+            <Link
+              href="/reports"
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              统计报表
+            </Link>
+          )}
           {(user.role === "RESPONSIBLE_EDITOR" || user.role === "INTERNAL_ADMIN") && (
             <Link
               href="/tasks/new"
