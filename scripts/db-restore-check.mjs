@@ -14,12 +14,20 @@ const projectRoot = path.resolve(__dirname, "..");
 const FORMAL_DB =
   process.env.DATABASE_PATH || path.join(projectRoot, "data", "publishing-process.db");
 
-const TABLES = ["companies", "users", "books", "tasks", "task_events", "audit_log"];
+const TABLES = ["companies", "users", "books", "tasks", "task_events", "audit_log", "deliveries", "delivery_receipts"];
+
+function tableExists(db, name) {
+  return (
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) != null
+  );
+}
 
 function counts(db) {
   const r = {};
   for (const t of TABLES) {
-    r[t] = db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c;
+    r[t] = tableExists(db, t)
+      ? db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c
+      : null; // 表尚不存在（如未迁移 deliveries）时记 null
   }
   return r;
 }
@@ -93,22 +101,28 @@ try {
   console.log(`临时恢复库：${tmpDbPath}`);
   console.log(`integrity_check：${integrityLabel(tmpIntegrity)}`);
   console.log(`quick_check：${quickLabel(tmpQuick)}`);
-  console.log("六张表行数（原备份库 → 临时恢复库）：");
+  console.log("业务表行数（原备份库 → 临时恢复库）：");
   let allMatch = true;
   for (const t of TABLES) {
-    const match = backupCounts[t] === tmpCounts[t];
+    const s = backupCounts[t];
+    const b = tmpCounts[t];
+    if (s == null && b == null) {
+      console.log(`  ${t}: 表不存在（未迁移），跳过`);
+      continue;
+    }
+    const match = s === b;
     if (!match) allMatch = false;
-    console.log(`  ${t}: ${backupCounts[t]} → ${tmpCounts[t]}${match ? "" : "  (不一致)"}`);
+    console.log(`  ${t}: ${s} → ${b}${match ? "" : "  (不一致)"}`);
   }
 
   const integrityOk = integrityLabel(tmpIntegrity) === "ok";
   const quickOk = quickLabel(tmpQuick) === "ok";
 
   if (!integrityOk || !quickOk || !allMatch) {
-    console.error("恢复验证未通过（完整性异常或六表行数不一致）");
+    console.error("恢复验证未通过（完整性异常或业务表行数不一致）");
     process.exitCode = 1;
   } else {
-    console.log("恢复验证通过：临时恢复库完整性与六表行数全部一致");
+    console.log("恢复验证通过：临时恢复库完整性与业务表行数全部一致");
   }
 } finally {
   // 8. 只删除系统临时目录中的恢复副本，不删除原备份文件、不触碰正式数据库

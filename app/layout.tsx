@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "出版校对流程管理平台",
-  description: "出版校对流程管理平台 —— 校对进度看板与滞留预警",
+  title: "校了么",
+  description: "书稿校对任务与返稿配送管理系统",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

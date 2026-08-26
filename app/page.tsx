@@ -11,7 +11,11 @@ import {
   listCompletedByEditor,
   countActiveBooksByEditor,
   countWarehouseByCompany,
+  listInTransit,
+  listInTransitByEditor,
+  listDeliveredUnconfirmedByEditor,
   type DashboardTask,
+  type DeliveredTask,
 } from "@/lib/dashboard-service";
 import {
   countPendingConfirmation,
@@ -21,6 +25,7 @@ import {
   type ProofreaderOption,
 } from "@/lib/task-service";
 import { listMyTodos } from "@/lib/todo-service";
+import { recentDeliveryCutoffMs } from "@/lib/delivery-service";
 import UserBar from "@/app/components/UserBar";
 import DashboardTaskRow from "@/components/DashboardTaskRow";
 import DashboardOverdueRow from "@/components/DashboardOverdueRow";
@@ -29,6 +34,8 @@ import FinishActions from "@/components/FinishActions";
 import CancelActions from "@/components/CancelActions";
 import SearchBox from "@/components/SearchBox";
 import SupervisorPendingList from "@/components/SupervisorPendingList";
+import SupervisorInTransitList from "@/components/SupervisorInTransitList";
+import EditorMealBoard from "@/components/EditorMealBoard";
 
 type StatTone = "slate" | "amber" | "blue" | "red" | "emerald";
 
@@ -45,17 +52,22 @@ function StatCard({
   value,
   tone,
   href,
+  unit,
 }: {
   label: string;
   value: number;
   tone: StatTone;
   href?: string;
+  unit?: string;
 }) {
   const cls = `rounded-lg border border-gray-200 border-l-4 ${STAT_TONES[tone]} bg-white p-3 text-center shadow-sm`;
   const content = (
     <>
       <div className="text-xs text-gray-500">{label}</div>
-      <div className="mt-0.5 text-2xl font-bold">{value}</div>
+      <div className="mt-0.5 text-2xl font-bold">
+        {value}
+        {unit && <span className="ml-1 text-sm font-normal text-gray-500">{unit}</span>}
+      </div>
     </>
   );
   if (href) {
@@ -98,6 +110,9 @@ export default async function Home({
   let myPendingCount = 0;
   let externalCompanies;
   let warehouseByCompany;
+  let inTransit: DashboardTask[] = [];
+  let inTransitByEditor: DashboardTask[] = [];
+  let deliveredUnconfirmed: DeliveredTask[] = [];
   const proofreadersByCompany = new Map<number, ProofreaderOption[]>();
   try {
     warehouse = listWarehouse(db);
@@ -113,11 +128,22 @@ export default async function Home({
         : [];
     externalCompanies = listActiveExternalCompanies(db);
     warehouseByCompany = countWarehouseByCompany(db);
+    if (user.role === "EXTERNAL_SUPERVISOR" && user.company_id != null) {
+      inTransit = listInTransit(db, user.company_id);
+    } else if (user.role === "INTERNAL_ADMIN") {
+      inTransit = listInTransit(db, null);
+    }
     if (isEditor) {
       myProduction = listProductionByEditor(db, user.id);
       myCompleted = listCompletedByEditor(db, user.id);
       myActiveBooks = countActiveBooksByEditor(db, user.id);
       myPendingCount = countPendingConfirmation(db, { editorId: user.id });
+      inTransitByEditor = listInTransitByEditor(db, user.id);
+      deliveredUnconfirmed = listDeliveredUnconfirmedByEditor(
+        db,
+        user.id,
+        new Date(recentDeliveryCutoffMs(now)).toISOString(),
+      );
     }
     if (user.role === "INTERNAL_ADMIN") {
       for (const task of warehouse) {
@@ -147,7 +173,7 @@ export default async function Home({
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-6">
       <header className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">出版校对流程管理平台</h1>
+        <h1 className="text-2xl font-bold text-gray-900">校了么</h1>
         <div className="flex items-center gap-3">
           {user.role === "INTERNAL_ADMIN" && (
             <Link
@@ -162,7 +188,7 @@ export default async function Home({
               href="/tasks/pending-confirmation"
               className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
             >
-              {isEditor ? "我的待确认" : "待确认收稿"}（{isEditor ? myPendingCount : pendingCount}）
+              {isEditor ? "我的待确认" : "您有新的订单！"}（{isEditor ? myPendingCount : pendingCount}）
             </Link>
           )}
           {user.role !== "EXTERNAL_SUPERVISOR" && (
@@ -209,8 +235,8 @@ export default async function Home({
           <>
             <StatCard label="我的现有书稿" value={myActiveBooks} tone="slate" />
             <StatCard label="我的待确认" value={myPendingCount} tone="amber" />
-            <StatCard label="部门书稿仓库" value={warehouse.length} tone="blue" />
-            <StatCard label="我的生产线" value={myProduction.length} tone="red" />
+            <StatCard label="前方还有" value={warehouseForDisplay.length} tone="blue" unit="份待制作" />
+            <StatCard label="“备餐”中，请耐心等待～" value={myProduction.length} tone="red" />
             <StatCard label="我的已完成" value={myCompleted.length} tone="emerald" />
           </>
         ) : (
@@ -234,12 +260,12 @@ export default async function Home({
           {user.role === "EXTERNAL_SUPERVISOR" && (
             <section>
               <div className="mb-3 flex items-baseline justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">待确认收稿</h2>
+                <h2 className="text-lg font-semibold text-gray-900">您有新的订单！</h2>
                 <span className="text-sm text-gray-500">共 {supervisorPending.length} 条</span>
               </div>
               {shownPending.length === 0 ? (
                 <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-center text-sm text-gray-400">
-                  当前没有待确认收稿
+                  当前没有新的订单
                 </div>
               ) : (
                 <SupervisorPendingList items={shownPending} />
@@ -249,8 +275,24 @@ export default async function Home({
                   href="/tasks/pending-confirmation"
                   className="mt-3 inline-block w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-center text-sm text-gray-600 hover:bg-gray-50"
                 >
-                  查看全部待确认收稿
+                  查看全部新的订单
                 </Link>
+              )}
+            </section>
+          )}
+
+          {(user.role === "EXTERNAL_SUPERVISOR" || user.role === "INTERNAL_ADMIN") && (
+            <section>
+              <div className="mb-3 flex items-baseline justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">运送中</h2>
+                <span className="text-sm text-gray-500">共 {inTransit.length} 条</span>
+              </div>
+              {inTransit.length === 0 ? (
+                <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400">
+                  当前没有待送达的稿件
+                </div>
+              ) : (
+                <SupervisorInTransitList items={inTransit} currentRole={user.role} />
               )}
             </section>
           )}
@@ -258,7 +300,7 @@ export default async function Home({
           {isEditor ? (
             <section>
               <div className="mb-3 flex items-baseline justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">部门书稿仓库</h2>
+                <h2 className="text-lg font-semibold text-gray-900">前方还有 {warehouseForDisplay.length} 份待制作</h2>
                 <span className="text-sm text-gray-500">共 {warehouseForDisplay.length} 条</span>
               </div>
               <div className="mb-2 flex flex-wrap gap-2 text-xs text-gray-600">
@@ -399,7 +441,7 @@ export default async function Home({
 
           <section>
             <div className="mb-3 flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">{isEditor ? "我的生产线" : "生产线"}</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{isEditor ? "“备餐”中，请耐心等待～" : "生产线"}</h2>
               <span className="text-sm text-gray-500">共 {productionList.length} 条</span>
             </div>
             {productionList.length === 0 ? (
@@ -456,7 +498,23 @@ export default async function Home({
           )}
         </div>
 
-        {!isEditor && (
+        {isEditor ? (
+          <aside>
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className="text-lg font-semibold text-emerald-700">已“出餐”</h2>
+              <span className="text-sm text-gray-500">
+                共 {deliveredUnconfirmed.length + inTransitByEditor.length} 条
+              </span>
+            </div>
+            {deliveredUnconfirmed.length + inTransitByEditor.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400">
+                当前没有配送中的稿件
+              </div>
+            ) : (
+              <EditorMealBoard delivered={deliveredUnconfirmed} inTransit={inTransitByEditor} />
+            )}
+          </aside>
+        ) : (
         <aside>
           <div className="mb-3 flex items-baseline justify-between">
             <h2 className="text-lg font-semibold text-red-700">总控预警</h2>

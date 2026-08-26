@@ -295,8 +295,8 @@ const statusCounts = db
   .all() as { status: string; c: number }[];
 
 console.log(`演示库：${DEMO_DB}`);
-console.log("六张表行数：");
-for (const t of ["companies", "users", "books", "tasks", "task_events", "audit_log"]) {
+console.log("业务表行数：");
+for (const t of ["companies", "users", "books", "tasks", "task_events", "audit_log", "deliveries", "delivery_receipts"]) {
   console.log(`  ${t}: ${count(`SELECT COUNT(*) c FROM ${t}`)}`);
 }
 console.log("各状态任务数：");

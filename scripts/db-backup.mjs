@@ -15,12 +15,20 @@ const DB_PATH =
 const BACKUP_DIR =
   process.env.BACKUP_DIR || path.join(projectRoot, "data", "backups");
 
-const TABLES = ["companies", "users", "books", "tasks", "task_events", "audit_log"];
+const TABLES = ["companies", "users", "books", "tasks", "task_events", "audit_log", "deliveries", "delivery_receipts"];
+
+function tableExists(db, name) {
+  return (
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) != null
+  );
+}
 
 function counts(db) {
   const r = {};
   for (const t of TABLES) {
-    r[t] = db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c;
+    r[t] = tableExists(db, t)
+      ? db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c
+      : null; // 表尚不存在（如未迁移 deliveries）时记 null
   }
   return r;
 }
@@ -119,20 +127,26 @@ console.log(`备份文件：${backupPath}`);
 console.log(`备份文件大小：${size} 字节`);
 console.log(`integrity_check：${integrityLabel(backupIntegrity)}`);
 console.log(`quick_check：${quickLabel(backupQuick)}`);
-console.log("六张表行数（正式库 → 备份库）：");
+console.log("业务表行数（正式库 → 备份库）：");
 let allMatch = true;
 for (const t of TABLES) {
-  const match = sourceCounts[t] === backupCounts[t];
+  const s = sourceCounts[t];
+  const b = backupCounts[t];
+  if (s == null && b == null) {
+    console.log(`  ${t}: 表不存在（未迁移），跳过`);
+    continue;
+  }
+  const match = s === b;
   if (!match) allMatch = false;
-  console.log(`  ${t}: ${sourceCounts[t]} → ${backupCounts[t]}${match ? "" : "  (不一致)"}`);
+  console.log(`  ${t}: ${s} → ${b}${match ? "" : "  (不一致)"}`);
 }
 
 const integrityOk = integrityLabel(backupIntegrity) === "ok";
 const quickOk = quickLabel(backupQuick) === "ok";
 
 if (!integrityOk || !quickOk || !allMatch) {
-  console.error("备份校验未通过（完整性异常或六表行数不一致）");
+  console.error("备份校验未通过（完整性异常或业务表行数不一致）");
   process.exit(1);
 }
 
-console.log("备份成功：完整性与六表行数全部一致");
+console.log("备份成功：完整性与业务表行数全部一致");

@@ -196,12 +196,28 @@ test("9. 首页源码含责任编辑角色化查询与部门仓库", () => {
   assert.ok(src.includes("listCompletedByEditor"));
   assert.ok(src.includes("countActiveBooksByEditor"));
   assert.ok(src.includes("countWarehouseByCompany"));
-  assert.ok(src.includes("部门书稿仓库"));
-  assert.ok(src.includes("我的生产线"));
+  assert.ok(src.includes("前方还有 {warehouseForDisplay.length} 份待制作"));
+  assert.ok(src.includes("“备餐”中，请耐心等待～"));
   assert.ok(src.includes("我的已完成"));
 });
 
-test("10. 自动测试不污染正式数据库", () => {
+test("10. 责任编辑仓库筛选联动：全部/A/B/清除 数量正确", () => {
+  const db = freshDb();
+  // 演示数据：A公司(companyId=2) 5 份、B公司(companyId=3) 2 份待开始稿件
+  for (let i = 0; i < 5; i++) toReady(db, { operatorId: 1, title: `A${i}`, companyId: 2 });
+  for (let i = 0; i < 2; i++) toReady(db, { operatorId: 1, title: `B${i}`, companyId: 3 });
+  const warehouse = listWarehouse(db);
+  // 复刻首页 warehouseForDisplay 的筛选口径（不新增查询、不改统计口径）
+  const display = (companyFilter: number | null) =>
+    companyFilter != null ? warehouse.filter((t) => t.companyId === companyFilter) : warehouse;
+  assert.strictEqual(display(null).length, 7); // 全部外校公司
+  assert.strictEqual(display(2).length, 5); // 演示外校公司A
+  assert.strictEqual(display(3).length, 2); // 演示外校公司B
+  assert.strictEqual(display(null).length, 7); // 清除后恢复总数
+  db.close();
+});
+
+test("11. 自动测试不污染正式数据库", () => {
   if (!fs.existsSync(FORMAL_PATH)) return;
   assert.deepStrictEqual(formalCounts(), FORMAL_BASELINE);
 });

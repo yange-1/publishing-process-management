@@ -280,3 +280,111 @@ export function countProduction(db: Database.Database): number {
 export function countCompleted(db: Database.Database): number {
   return (db.prepare("SELECT COUNT(*) c FROM tasks WHERE status = 'COMPLETED'").get() as { c: number }).c;
 }
+
+// ===== 配送：运送中 / 已送达 =====
+// 运送中 = 已结束校对（COMPLETED）且尚无 deliveries 记录；不写入 tasks.status。
+// 外校主管只查本公司；Dominance 传 companyId=null 查全部公司。
+export function listInTransit(
+  db: Database.Database,
+  companyId: number | null,
+): DashboardTask[] {
+  const noDelivery = "NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.task_id = t.id)";
+  if (companyId != null) {
+    return db
+      .prepare(
+        `${BASE_SELECT} WHERE t.status = 'COMPLETED' AND t.company_id = ? AND ${noDelivery} ORDER BY t.finished_at ASC, t.id ASC`,
+      )
+      .all(companyId) as DashboardTask[];
+  }
+  return db
+    .prepare(
+      `${BASE_SELECT} WHERE t.status = 'COMPLETED' AND ${noDelivery} ORDER BY t.finished_at ASC, t.id ASC`,
+    )
+    .all() as DashboardTask[];
+}
+
+export function countInTransit(db: Database.Database, companyId: number | null): number {
+  const noDelivery = "NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.task_id = t.id)";
+  const where =
+    companyId != null
+      ? `t.status = 'COMPLETED' AND t.company_id = ? AND ${noDelivery}`
+      : `t.status = 'COMPLETED' AND ${noDelivery}`;
+  return (
+    db
+      .prepare(`SELECT COUNT(*) c FROM tasks t WHERE ${where}`)
+      .get(...(companyId != null ? [companyId] : [])) as { c: number }
+  ).c;
+}
+
+// 责任编辑：本人书稿中已结束校对、尚无送达记录的任务（“配送中”，不受 7 日窗口限制）。
+export function listInTransitByEditor(
+  db: Database.Database,
+  editorId: number,
+): DashboardTask[] {
+  return db
+    .prepare(
+      `${BASE_SELECT} WHERE t.status = 'COMPLETED' AND b.editor_id = ? AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.task_id = t.id) ORDER BY t.finished_at DESC, t.id DESC`,
+    )
+    .all(editorId) as DashboardTask[];
+}
+
+// 已送达未确认任务（责任编辑维度）：含送达时间与送达人；排除已确认收到（有 delivery_receipts）的任务。
+export interface DeliveredTask extends DashboardTask {
+  deliveredAt: string;
+  deliveredByName: string | null;
+}
+
+export function listDeliveredUnconfirmedByEditor(
+  db: Database.Database,
+  editorId: number,
+  cutoffIso: string,
+): DeliveredTask[] {
+  return db
+    .prepare(
+      `SELECT t.id, b.id AS bookId, b.editor_id AS editorId, b.title,
+              t.stage, t.work_type AS workType, t.star_level AS starLevel,
+              t.published_at AS publishedAt, t.status,
+              t.work_word_count AS workWordCount,
+              t.external_confirmed_word_count AS externalConfirmedWordCount,
+              t.proofreader_id AS proofreaderId, t.started_at AS startedAt,
+              t.finished_at AS finishedAt,
+              u.display_name AS editorName,
+              cu.name AS publisherCompanyName,
+              c.name AS companyName,
+              t.company_id AS companyId,
+              pu.display_name AS proofreaderName,
+              d.delivered_at AS deliveredAt,
+              du.display_name AS deliveredByName
+       FROM tasks t
+       JOIN books b ON b.id = t.book_id
+       JOIN deliveries d ON d.task_id = t.id
+       LEFT JOIN users u ON u.id = t.publisher_id
+       LEFT JOIN companies cu ON cu.id = u.company_id
+       LEFT JOIN companies c ON c.id = t.company_id
+       LEFT JOIN users pu ON pu.id = t.proofreader_id
+       LEFT JOIN users du ON du.id = d.delivered_by
+       WHERE t.status = 'COMPLETED' AND b.editor_id = ? AND d.delivered_at >= ?
+         AND NOT EXISTS (SELECT 1 FROM delivery_receipts r WHERE r.delivery_id = d.id)
+       ORDER BY d.delivered_at DESC, t.id DESC`,
+    )
+    .all(editorId, cutoffIso) as DeliveredTask[];
+}
+
+export function countDeliveredUnconfirmedByEditor(
+  db: Database.Database,
+  editorId: number,
+  cutoffIso: string,
+): number {
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) c
+         FROM tasks t
+         JOIN books b ON b.id = t.book_id
+         JOIN deliveries d ON d.task_id = t.id
+         WHERE t.status = 'COMPLETED' AND b.editor_id = ? AND d.delivered_at >= ?
+           AND NOT EXISTS (SELECT 1 FROM delivery_receipts r WHERE r.delivery_id = d.id)`,
+      )
+      .get(editorId, cutoffIso) as { c: number }
+  ).c;
+}

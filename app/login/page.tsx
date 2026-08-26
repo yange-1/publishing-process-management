@@ -35,7 +35,7 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
         <h1 className="mb-6 text-center text-xl font-bold text-gray-900">
-          出版校对流程管理平台
+          校了么
         </h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
