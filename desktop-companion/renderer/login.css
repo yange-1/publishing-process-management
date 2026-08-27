@@ -1,0 +1,76 @@
+/* 校了么桌面伴侣 · 登录小窗口样式 */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB",
+    "Noto Sans CJK SC", Arial, sans-serif;
+  background: #f6f7f9;
+  color: #172033;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-font-smoothing: antialiased;
+}
+
+.login-card {
+  width: 280px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.hint {
+  font-size: 12px;
+  color: #667085;
+  margin: 0 0 16px;
+}
+
+input {
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 10px;
+  border: 1px solid #e6e8ec;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #ff7a00;
+}
+
+button {
+  width: 100%;
+  padding: 9px;
+  background: #ff5a1f;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.error {
+  color: #c0392b;
+  font-size: 12px;
+  margin: 10px 0 0;
+  min-height: 16px;
+}

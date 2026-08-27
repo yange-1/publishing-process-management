@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 桌面伴侣是独立 Electron 子项目（CommonJS），不纳入平台 TypeScript 规则。
+    "desktop-companion/**",
   ]),
 ]);
 

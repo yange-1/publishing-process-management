@@ -1,0 +1,11 @@
+# 桌面伴侣依赖与本地文件
+node_modules/
+*.log
+
+# 视觉参考图（仅本地设计用，不纳入 Git）
+approved-four-states-reference.png
+*-reference.png
+
+# 素材包源文件（解压后已复制到 renderer/assets/，不纳入 Git）
+xiaoleme-desktop-assets.zip
+xiaoleme-desktop-assets/

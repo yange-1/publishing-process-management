@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';"
+    />
+    <title>校了么桌面伴侣 - 登录</title>
+    <link rel="stylesheet" href="login.css" />
+  </head>
+  <body>
+    <div class="login-card">
+      <h1>校了么桌面伴侣</h1>
+      <p class="hint">使用平台责任编辑账号登录</p>
+      <form id="login-form">
+        <input id="username" type="text" placeholder="用户名" autocomplete="username" required />
+        <input id="password" type="password" placeholder="密码" autocomplete="current-password" required />
+        <button id="submit" type="submit">登录</button>
+      </form>
+      <p id="error" class="error" aria-live="polite"></p>
+    </div>
+    <script src="login.js"></script>
+  </body>
+</html>

@@ -137,6 +137,18 @@ export function listProductionByEditor(
     .all(editorId) as DashboardTask[];
 }
 
+// 责任编辑：本人书稿中处于活动状态（待确认/待开始/进行中）的任务，供桌面伴侣只读接口使用。
+export function listActiveTasksByEditor(
+  db: Database.Database,
+  editorId: number,
+): DashboardTask[] {
+  return db
+    .prepare(
+      `${BASE_SELECT} WHERE t.status IN ('PENDING_CONFIRMATION','READY_TO_START','IN_PROGRESS') AND b.editor_id = ? ${ORDER_STAR_TIME}`,
+    )
+    .all(editorId) as DashboardTask[];
+}
+
 // 已完成。
 export function listCompleted(db: Database.Database): DashboardTask[] {
   return db
