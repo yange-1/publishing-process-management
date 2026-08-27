@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { confirmReceiptAction } from "@/app/tasks/pending-confirmation/actions";
 import { STAGE_LABELS, WORK_TYPE_LABELS } from "@/lib/dashboard-service";
 import { wordCountText, type PendingConfirmationItem } from "@/lib/task-service";
+import { stageColor } from "./stage-colors";
 
 type Message = { kind: "ok" | "err"; text: string } | null;
 
@@ -73,7 +74,7 @@ function ConfirmWithCount({ item }: { item: PendingConfirmationItem }) {
           type="button"
           onClick={submit}
           disabled={pendingId === item.id}
-          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-md bg-[#FF5A1F] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#E94710] disabled:opacity-50"
         >
           {pendingId === item.id ? "处理中…" : "确认收稿"}
         </button>
@@ -96,43 +97,54 @@ export default function SupervisorPendingList({
   items: PendingConfirmationItem[];
 }) {
   return (
-    <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-      {items.map((item) => (
-        <li key={item.id} className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <span className="w-14 shrink-0 text-sm text-amber-500">
-              {"★".repeat(item.starLevel)}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="truncate font-medium text-gray-900" title={item.title}>
-                  {item.title}
-                </span>
-                <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
-                  {STAGE_LABELS[item.stage] ?? item.stage}
-                </span>
-                <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
-                  {WORK_TYPE_LABELS[item.workType] ?? "读校"}
-                </span>
-              </div>
-              <div className="mt-0.5 truncate text-xs text-gray-500">
-                责任编辑：{item.editorName ?? "—"} · 发布单位：
-                {item.publisherCompanyName ?? "—"} · 来稿 {fmtDate(item.publishedAt)} · 已等待{" "}
-                {waitDays(item.publishedAt)} 天
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Link
-                href={`/books/${item.bookId}`}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+    <ul className="space-y-2">
+      {items.map((item) => {
+        const c = stageColor(item.stage);
+        return (
+          <li
+            key={item.id}
+            className={`rounded-lg border border-[#E6E8EC] border-l-4 bg-white px-4 py-3 shadow-sm transition hover:shadow-md ${c.strip}`}
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${c.icon} ${c.iconText}`}
               >
-                查看历史
-              </Link>
-              <ConfirmWithCount item={item} />
+                {c.short}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="shrink-0 text-sm text-amber-500">
+                    {"★".repeat(item.starLevel)}
+                  </span>
+                  <span className="min-w-0 truncate text-sm font-bold text-[#172033]" title={item.title}>
+                    {item.title}
+                  </span>
+                  <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${c.badge}`}>
+                    {STAGE_LABELS[item.stage] ?? item.stage}
+                  </span>
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                    {WORK_TYPE_LABELS[item.workType] ?? "读校"}
+                  </span>
+                </div>
+                <div className="mt-0.5 truncate text-xs text-[#667085]">
+                  责任编辑：{item.editorName ?? "—"} · 发布单位：
+                  {item.publisherCompanyName ?? "—"} · 来稿 {fmtDate(item.publishedAt)} · 已等待{" "}
+                  {waitDays(item.publishedAt)} 天
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Link
+                  href={`/books/${item.bookId}`}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                >
+                  查看历史
+                </Link>
+                <ConfirmWithCount item={item} />
+              </div>
             </div>
-          </div>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }

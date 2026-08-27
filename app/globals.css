@@ -1,8 +1,20 @@
 @import "tailwindcss";
 
+/* 品牌色系统：明黄 #FFD43B + 橙红 #FF5A1F + 品牌红 #FF3B30 为主视觉；
+   页面背景 #F6F7F9、白色卡片；校次彩色仅用于小图标/标签/细色条。
+   红色只用于“已滞留”、取消任务、错误或危险提示。 */
 body {
-  background: #f4f5f7;
+  background: #f6f7f9;
   color: #1f2937;
   font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB",
     "Noto Sans CJK SC", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 交互卡片统一过渡，保持轻外卖风 + 专业出版感的克制效果。 */
+a,
+button {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
