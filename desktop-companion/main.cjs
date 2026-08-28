@@ -15,16 +15,19 @@ const fs = require("fs");
 const { computeWindowSize } = require("./window-size.js");
 const M = require("./renderer/manuscripts.js");
 const S = require("./renderer/states.js");
+const { sanitizeSettings } = require("./settings.cjs");
+const { DEFAULT_SERVER_URL, normalizeServerUrl } = require("./server-url.cjs");
 
 const ASPECT_RATIO = 1.6;
 const MARGIN = 24;
 const POLL_INTERVAL_MS = 15 * 1000;
-const BASE_URL = process.env.COMPANION_API_URL || "http://localhost:3000";
 
 let win = null; // 悬浮窗
 let loginWin = null; // 登录小窗口
 let tray = null;
 let muted = false;
+let autoStart = true;
+let serverUrl = DEFAULT_SERVER_URL;
 let lastDisplayId = null;
 let resizing = false;
 let token = null;
@@ -107,16 +110,26 @@ function saveSnapshot(snap) {
     /* 忽略 */
   }
 }
-function loadMuted() {
+function loadSettings() {
   try {
-    return JSON.parse(fs.readFileSync(settingsFile(), "utf-8")).muted === true;
+    const s = sanitizeSettings(JSON.parse(fs.readFileSync(settingsFile(), "utf-8")));
+    if (typeof s.muted === "boolean") muted = s.muted;
+    if (typeof s.autoStart === "boolean") autoStart = s.autoStart;
+    if (typeof s.serverUrl === "string") {
+      const norm = normalizeServerUrl(s.serverUrl);
+      if (norm) serverUrl = norm;
+    }
   } catch {
-    return false;
+    /* 忽略 */
   }
 }
-function saveMuted(m) {
+function saveSettings() {
   try {
-    fs.writeFileSync(settingsFile(), JSON.stringify({ muted: m }), "utf-8");
+    fs.writeFileSync(
+      settingsFile(),
+      JSON.stringify(sanitizeSettings({ muted, autoStart, serverUrl })),
+      "utf-8",
+    );
   } catch {
     /* 忽略 */
   }
@@ -224,7 +237,7 @@ function createLoginWindow() {
 async function pollOnce() {
   if (!token) return;
   try {
-    const res = await fetch(`${BASE_URL}/api/companion/manuscripts`, {
+    const res = await fetch(`${serverUrl}/api/companion/manuscripts`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.status === 401) {
@@ -283,9 +296,29 @@ function stopPolling() {
 async function handleLoginSubmit(_event, input) {
   const username = typeof input?.username === "string" ? input.username.trim() : "";
   const password = typeof input?.password === "string" ? input.password : "";
+  const inputUrl = typeof input?.serverUrl === "string" ? input.serverUrl.trim() : "";
   if (!username || !password) return { ok: false, message: "请输入用户名和密码" };
+
+  // 平台地址：为空沿用当前；更换服务器则删除旧令牌与 baseline。
+  let targetUrl = serverUrl;
+  if (inputUrl) {
+    const norm = normalizeServerUrl(inputUrl);
+    if (!norm) {
+      return { ok: false, message: "平台地址无效：仅支持 http://localhost、http://127.0.0.1 或 HTTPS 地址" };
+    }
+    targetUrl = norm;
+  }
+  if (targetUrl !== serverUrl) {
+    serverUrl = targetUrl;
+    token = null;
+    clearToken();
+    prevSnapshot = null;
+    baselineEstablished = false;
+    saveSettings();
+  }
+
   try {
-    const res = await fetch(`${BASE_URL}/api/companion/auth`, {
+    const res = await fetch(`${serverUrl}/api/companion/auth`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
@@ -295,7 +328,7 @@ async function handleLoginSubmit(_event, input) {
       token = data.token;
       saveToken(data.token);
       prevSnapshot = null;
-      baselineEstablished = false;
+      baselineEstablished = false; // 重新登录后首次数据只建 baseline，不播报
       if (loginWin) loginWin.close();
       if (win) win.show();
       startPolling();
@@ -310,8 +343,26 @@ async function handleLoginSubmit(_event, input) {
 // ===== 托盘 =====
 function toggleMute() {
   muted = !muted;
-  saveMuted(muted);
+  saveSettings();
   if (win) win.webContents.send("mute-changed", muted);
+}
+
+function applyAutoStart() {
+  // 仅正式安装版注册/注销开机启动；开发模式绝不注册。
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: autoStart, name: "校了么桌面伴侣" });
+  }
+}
+
+function toggleAutoStart() {
+  autoStart = !autoStart;
+  saveSettings();
+  applyAutoStart();
+}
+
+function startRelogin() {
+  stopPolling();
+  createLoginWindow();
 }
 function rebuildTrayMenu() {
   if (!tray) return;
@@ -330,6 +381,21 @@ function rebuildTrayMenu() {
       click: () => {
         toggleMute();
         rebuildTrayMenu();
+      },
+    },
+    {
+      label: "开机自动启动",
+      type: "checkbox",
+      checked: autoStart,
+      click: () => {
+        toggleAutoStart();
+        rebuildTrayMenu();
+      },
+    },
+    {
+      label: "重新登录/更换服务器",
+      click: () => {
+        startRelogin();
       },
     },
     { type: "separator" },
@@ -354,9 +420,11 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
-  muted = loadMuted();
+  loadSettings(); // 读取 muted 与 autoStart（autoStart 默认 true）
+  applyAutoStart(); // 首次安装默认开启开机自启；开发模式不注册
 
   ipcMain.handle("mute:get", () => muted);
+  ipcMain.handle("login:get-server-url", () => serverUrl);
   ipcMain.handle("login:submit", handleLoginSubmit);
 
   token = loadToken();

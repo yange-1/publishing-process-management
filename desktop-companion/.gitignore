@@ -9,3 +9,6 @@ approved-four-states-reference.png
 # 素材包源文件（解压后已复制到 renderer/assets/，不纳入 Git）
 xiaoleme-desktop-assets.zip
 xiaoleme-desktop-assets/
+
+# 安装包构建产物
+dist/

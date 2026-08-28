@@ -1,15 +1,20 @@
 {
   "name": "xiaolemao-desktop-companion",
   "version": "0.1.0",
-  "description": "校了么桌面伴侣（Windows 桌面悬浮状态栏原型）",
+  "description": "校了么桌面伴侣（Windows 桌面悬浮状态栏）",
+  "author": "校了么",
   "main": "main.cjs",
   "private": true,
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "icon": "node scripts/make-icon.cjs",
+    "dist": "electron-builder --win nsis --x64"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^24.13.3",
+    "rcedit": "^5.0.2"
   }
 }
